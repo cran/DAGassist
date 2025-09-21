@@ -1,0 +1,164 @@
+---
+title: "Getting the Most out of DAGassist Using Parameters"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Get Started}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+
+```
+
+```{r ex-dag, include=FALSE}
+library(dagitty)
+library(ggdag)
+
+dag_model <- dagify(
+  Y ~ X + M + Z + A + B,
+  X ~ Z,
+  C ~ X + Y,
+  M ~ X,
+  exposure = "X",
+  outcome  = "Y"
+)
+
+set.seed(42)
+n <- 2000
+
+#exogenous variables
+A <- rnorm(n, 0, 1)
+B <- rnorm(n, 0, 1)
+Z <- rnorm(n, 0, 1)
+
+#structural equations
+# X ~ Z
+beta_zx <- 0.8
+X <- beta_zx * Z + rnorm(n, 0, 1)
+
+# M ~ X
+beta_xm <- 0.9
+M <- beta_xm * X + rnorm(n, 0, 1)
+
+# Y ~ X + M + Z + A + B
+bX <- 0.7; bM <- 0.6; bZ <- 0.3; bA <- 0.2; bB <- -0.1
+Y <- bX*X + bM*M + bZ*Z + bA*A + bB*B + rnorm(n, 0, 1)
+
+# C ~ X + Y 
+bXC <- 0.5; bYC <- 0.4
+C <- bXC*X + bYC*Y + rnorm(n, 0, 1)
+
+reg_levels <- c("North", "South", "East", "West")
+region <- factor(sample(reg_levels, n, replace = TRUE))
+
+df <- data.frame(A, B, Z, X, M, Y, C, region)
+```
+
+# Introduction
+
+`DAGassist()` is meant to be simple and easy to use, and most of its features can be enjoyed via a simple two-parameter argument:
+```{r example, eval=FALSE}
+DAGassist(
+  dag = your_dag_model,
+  formula = your_regression_call
+)
+```
+
+However, `DAGassist()` includes several parameters for more specific applications. This vignette explains how to use those parameters to **get the most out of `DAGassist()`**.
+
+## Setup
+```{r setup}
+library(DAGassist)
+library(dagitty)
+```
+
+## `formula` arguments
+
+`DAGassist` supports formulaic and regression-based `formula` arguments. 
+
+```{r formula, eval=FALSE}
+#formulaic formula
+DAGassist(
+  dag = dag_model,
+  formula = Y ~ X + C,
+  data = df,
+  exposure = "X",
+  outcome = "Y"
+)
+
+#imputed formula
+DAGassist(
+  dag = dag_model,
+  formula = lm(Y ~ X + C, data=df)
+)
+```
+The two formulas above will print identical output. 
+
+## `imply` arguments
+
+In cases where you only want `DAGassist` to use the variables explicitly called in your formula, use `imply = FALSE`. 
+```{r imply-false}
+DAGassist(
+  dag = dag_model,
+  formula = lm(Y~X+C, data = df),
+  imply = FALSE
+)
+```
+In cases where you want `DAGassist` to explore all of the causal relationships explicated in your DAG, use    `imply = TRUE`. 
+```{r imply-true}
+DAGassist(
+  dag = dag_model,
+  formula = lm(Y~X+C, data = df),
+  imply = TRUE
+)
+```
+`DAGassist` will notify you of which variables it added. `imply` = FALSE by default.
+
+## `omit_factors` and `omit_intercept` arguments
+
+`DAGassist` omits factor and intercept rows by default, but you can explicitly include them. However, if they are not included in your DAG, `DAGassist` will not evaluate them, and will not include them in the minimal or canonical models.
+```{r omit}
+DAGassist(
+  dag = dag_model,
+  formula = fixest::feols(
+    Y ~ X + C + i(region),  
+    data = df),
+  omit_factors = FALSE,
+  omit_intercept = FALSE
+)
+```
+
+## `labels` arguments
+
+You can include a label list.
+```{r labels}
+labs <- list(
+  X = "Exposure",
+  C = "Collider"
+)
+
+DAGassist(
+  dag = dag_model,
+  formula = lm(
+    Y ~ X + C, data = df),
+  labels = labs
+)
+```
+Note that the `label` parameter uses `modelsummary()` `coef_rename` logic, so an incomplete label list will not throw any errors. 
+
+```{r rename}
+DAGassist(
+  dag = dag_model,
+  formula = lm(
+    Y ~ X + C, data = df),
+  labels = labs,
+  imply = TRUE
+)
+```
+
+
+

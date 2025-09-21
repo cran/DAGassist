@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<meta charset="utf-8" />
+<meta name="generator" content="pandoc" />
+<meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
+
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+
+
+<title>Supported Models</title>
+
+<script>// Pandoc 2.9 adds attributes on both header and div. We remove the former (to
+// be compatible with the behavior of Pandoc < 2.8).
+document.addEventListener('DOMContentLoaded', function(e) {
+  var hs = document.querySelectorAll("div.section[class*='level'] > :first-child");
+  var i, h, a;
+  for (i = 0; i < hs.length; i++) {
+    h = hs[i];
+    if (!/^h[1-6]$/i.test(h.tagName)) continue;  // it should be a header h1-h6
+    a = h.attributes;
+    while (a.length > 0) h.removeAttribute(a[0].name);
+  }
+});
+</script>
+
+<style type="text/css">
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+span.underline{text-decoration: underline;}
+div.column{display: inline-block; vertical-align: top; width: 50%;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+</style>
+
+
+
+<style type="text/css">
+code {
+white-space: pre;
+}
+.sourceCode {
+overflow: visible;
+}
+</style>
+<style type="text/css" data-origin="pandoc">
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+{ counter-reset: source-line 0; }
+pre.numberSource code > span
+{ position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+{ content: counter(source-line);
+position: relative; left: -1em; text-align: right; vertical-align: baseline;
+border: none; display: inline-block;
+-webkit-touch-callout: none; -webkit-user-select: none;
+-khtml-user-select: none; -moz-user-select: none;
+-ms-user-select: none; user-select: none;
+padding: 0 4px; width: 4em;
+color: #aaaaaa;
+}
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa; padding-left: 4px; }
+div.sourceCode
+{ }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span.al { color: #ff0000; font-weight: bold; } 
+code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.at { color: #7d9029; } 
+code span.bn { color: #40a070; } 
+code span.bu { color: #008000; } 
+code span.cf { color: #007020; font-weight: bold; } 
+code span.ch { color: #4070a0; } 
+code span.cn { color: #880000; } 
+code span.co { color: #60a0b0; font-style: italic; } 
+code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.do { color: #ba2121; font-style: italic; } 
+code span.dt { color: #902000; } 
+code span.dv { color: #40a070; } 
+code span.er { color: #ff0000; font-weight: bold; } 
+code span.ex { } 
+code span.fl { color: #40a070; } 
+code span.fu { color: #06287e; } 
+code span.im { color: #008000; font-weight: bold; } 
+code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.kw { color: #007020; font-weight: bold; } 
+code span.op { color: #666666; } 
+code span.ot { color: #007020; } 
+code span.pp { color: #bc7a00; } 
+code span.sc { color: #4070a0; } 
+code span.ss { color: #bb6688; } 
+code span.st { color: #4070a0; } 
+code span.va { color: #19177c; } 
+code span.vs { color: #4070a0; } 
+code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } 
+</style>
+<script>
+// apply pandoc div.sourceCode style to pre.sourceCode instead
+(function() {
+  var sheets = document.styleSheets;
+  for (var i = 0; i < sheets.length; i++) {
+    if (sheets[i].ownerNode.dataset["origin"] !== "pandoc") continue;
+    try { var rules = sheets[i].cssRules; } catch (e) { continue; }
+    var j = 0;
+    while (j < rules.length) {
+      var rule = rules[j];
+      // check if there is a div.sourceCode rule
+      if (rule.type !== rule.STYLE_RULE || rule.selectorText !== "div.sourceCode") {
+        j++;
+        continue;
+      }
+      var style = rule.style.cssText;
+      // check if color or background-color is set
+      if (rule.style.color === '' && rule.style.backgroundColor === '') {
+        j++;
+        continue;
+      }
+      // replace div.sourceCode by a pre.sourceCode rule
+      sheets[i].deleteRule(j);
+      sheets[i].insertRule('pre.sourceCode{' + style + '}', j);
+    }
+  }
+})();
+</script>
+
+
+
+
+<style type="text/css">body {
+background-color: #fff;
+margin: 1em auto;
+max-width: 700px;
+overflow: visible;
+padding-left: 2em;
+padding-right: 2em;
+font-family: "Open Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+font-size: 14px;
+line-height: 1.35;
+}
+#TOC {
+clear: both;
+margin: 0 0 10px 10px;
+padding: 4px;
+width: 400px;
+border: 1px solid #CCCCCC;
+border-radius: 5px;
+background-color: #f6f6f6;
+font-size: 13px;
+line-height: 1.3;
+}
+#TOC .toctitle {
+font-weight: bold;
+font-size: 15px;
+margin-left: 5px;
+}
+#TOC ul {
+padding-left: 40px;
+margin-left: -1.5em;
+margin-top: 5px;
+margin-bottom: 5px;
+}
+#TOC ul ul {
+margin-left: -2em;
+}
+#TOC li {
+line-height: 16px;
+}
+table {
+margin: 1em auto;
+border-width: 1px;
+border-color: #DDDDDD;
+border-style: outset;
+border-collapse: collapse;
+}
+table th {
+border-width: 2px;
+padding: 5px;
+border-style: inset;
+}
+table td {
+border-width: 1px;
+border-style: inset;
+line-height: 18px;
+padding: 5px 5px;
+}
+table, table th, table td {
+border-left-style: none;
+border-right-style: none;
+}
+table thead, table tr.even {
+background-color: #f7f7f7;
+}
+p {
+margin: 0.5em 0;
+}
+blockquote {
+background-color: #f6f6f6;
+padding: 0.25em 0.75em;
+}
+hr {
+border-style: solid;
+border: none;
+border-top: 1px solid #777;
+margin: 28px 0;
+}
+dl {
+margin-left: 0;
+}
+dl dd {
+margin-bottom: 13px;
+margin-left: 13px;
+}
+dl dt {
+font-weight: bold;
+}
+ul {
+margin-top: 0;
+}
+ul li {
+list-style: circle outside;
+}
+ul ul {
+margin-bottom: 0;
+}
+pre, code {
+background-color: #f7f7f7;
+border-radius: 3px;
+color: #333;
+white-space: pre-wrap; 
+}
+pre {
+border-radius: 3px;
+margin: 5px 0px 10px 0px;
+padding: 10px;
+}
+pre:not([class]) {
+background-color: #f7f7f7;
+}
+code {
+font-family: Consolas, Monaco, 'Courier New', monospace;
+font-size: 85%;
+}
+p > code, li > code {
+padding: 2px 0px;
+}
+div.figure {
+text-align: center;
+}
+img {
+background-color: #FFFFFF;
+padding: 2px;
+border: 1px solid #DDDDDD;
+border-radius: 3px;
+border: 1px solid #CCCCCC;
+margin: 0 5px;
+}
+h1 {
+margin-top: 0;
+font-size: 35px;
+line-height: 40px;
+}
+h2 {
+border-bottom: 4px solid #f7f7f7;
+padding-top: 10px;
+padding-bottom: 2px;
+font-size: 145%;
+}
+h3 {
+border-bottom: 2px solid #f7f7f7;
+padding-top: 10px;
+font-size: 120%;
+}
+h4 {
+border-bottom: 1px solid #f7f7f7;
+margin-left: 8px;
+font-size: 105%;
+}
+h5, h6 {
+border-bottom: 1px solid #ccc;
+font-size: 105%;
+}
+a {
+color: #0033dd;
+text-decoration: none;
+}
+a:hover {
+color: #6666ff; }
+a:visited {
+color: #800080; }
+a:visited:hover {
+color: #BB00BB; }
+a[href^="http:"] {
+text-decoration: underline; }
+a[href^="https:"] {
+text-decoration: underline; }
+
+code > span.kw { color: #555; font-weight: bold; } 
+code > span.dt { color: #902000; } 
+code > span.dv { color: #40a070; } 
+code > span.bn { color: #d14; } 
+code > span.fl { color: #d14; } 
+code > span.ch { color: #d14; } 
+code > span.st { color: #d14; } 
+code > span.co { color: #888888; font-style: italic; } 
+code > span.ot { color: #007020; } 
+code > span.al { color: #ff0000; font-weight: bold; } 
+code > span.fu { color: #900; font-weight: bold; } 
+code > span.er { color: #a61717; background-color: #e3d2d2; } 
+</style>
+
+
+
+
+</head>
+
+<body>
+
+
+
+
+<h1 class="title toc-ignore">Supported Models</h1>
+
+
+
+<p>This vignette shows <strong>model engines</strong> that
+<code>DAGassist</code> has been verified to work with and provides
+concrete usage examples. The list is illustrative, not exhaustive.
+<code>DAGassist</code> is model-agnostic: if an engine accepts a
+standard <code>formula + data</code> interface, it will usually
+work.</p>
+<p>If you want support documented (or added) for an engine not shown
+here, please <a href="https://grahamgoff.github.io/DAGassist/">open an
+issue or PR on GitHub.</a></p>
+<table>
+<thead>
+<tr class="header">
+<th>Package</th>
+<th>Function</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>estimatr</td>
+<td>lm_robust</td>
+</tr>
+<tr class="even">
+<td>fixest</td>
+<td>feglm</td>
+</tr>
+<tr class="odd">
+<td>fixest</td>
+<td>feols</td>
+</tr>
+<tr class="even">
+<td>lfe</td>
+<td>felm</td>
+</tr>
+<tr class="odd">
+<td>lme4</td>
+<td>glmer</td>
+</tr>
+<tr class="even">
+<td>lmerTest</td>
+<td>lmer</td>
+</tr>
+<tr class="odd">
+<td>MASS</td>
+<td>glm.nb</td>
+</tr>
+<tr class="even">
+<td>stats</td>
+<td>lm</td>
+</tr>
+</tbody>
+</table>
+<div id="notes" class="section level2">
+<h2>Notes</h2>
+<ul>
+<li><strong>Clusters:</strong> You may pass cluster variables as a bare
+name, a string, or a one-sided formula (e.g.,
+<code>clusters = cat_b</code>, <code>&quot;cat_b&quot;</code>, or
+<code>~cat_b</code>). <code>DAGassist</code> resolves them within
+<code>data</code>.</li>
+<li><strong>Fixed/Random effects:</strong> Random-effects bars (e.g.,
+<code>(1 | group)</code>) and fixest FE/IV tails <code>(| fe ...)</code>
+in your formula are preserved.</li>
+<li><strong>Difference-in-Differences:</strong> DiD notation works, but
+the interaction term must be included as a node in the DAG, named
+exactly as in the model, and set as the exposure. <code>DAGassist</code>
+breaks if the exposure is missing or mismatched.</li>
+</ul>
+</div>
+<div id="example-usage" class="section level2">
+<h2>Example usage</h2>
+<div id="estimatrlm_robust" class="section level3">
+<h3>estimatr::lm_robust</h3>
+<div class="sourceCode" id="cb1"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" tabindex="-1"></a><span class="fu">DAGassist</span>(</span>
+<span id="cb1-2"><a href="#cb1-2" tabindex="-1"></a>    <span class="at">dag =</span> dag_model,</span>
+<span id="cb1-3"><a href="#cb1-3" tabindex="-1"></a>    <span class="at">formula =</span> estimatr<span class="sc">::</span><span class="fu">lm_robust</span>(</span>
+<span id="cb1-4"><a href="#cb1-4" tabindex="-1"></a>        ancvs_change_1116 <span class="sc">~</span> western_belt <span class="sc">+</span></span>
+<span id="cb1-5"><a href="#cb1-5" tabindex="-1"></a>            unemploy_broad <span class="sc">+</span> black_popshare <span class="sc">+</span> col_popshare <span class="sc">+</span></span>
+<span id="cb1-6"><a href="#cb1-6" tabindex="-1"></a>            indasian_popshare <span class="sc">+</span> other_popshare <span class="sc">+</span> share_formal <span class="sc">+</span></span>
+<span id="cb1-7"><a href="#cb1-7" tabindex="-1"></a>            share_informal <span class="sc">+</span> share_traditional <span class="sc">+</span> afrikaans_popshare <span class="sc">+</span></span>
+<span id="cb1-8"><a href="#cb1-8" tabindex="-1"></a>            english_popshare <span class="sc">+</span> isindebele_popshare <span class="sc">+</span> isixhosa_popshare <span class="sc">+</span></span>
+<span id="cb1-9"><a href="#cb1-9" tabindex="-1"></a>            sepedi_popshare <span class="sc">+</span> sesotho_popshare <span class="sc">+</span> setswana_popshare <span class="sc">+</span></span>
+<span id="cb1-10"><a href="#cb1-10" tabindex="-1"></a>            signlanguage_popshare <span class="sc">+</span> siswati_popshare <span class="sc">+</span> tshivenda_popshare <span class="sc">+</span></span>
+<span id="cb1-11"><a href="#cb1-11" tabindex="-1"></a>            xitsonga_popshare <span class="sc">+</span></span>
+<span id="cb1-12"><a href="#cb1-12" tabindex="-1"></a>            latitude <span class="sc">+</span> longitude <span class="sc">+</span> latitudelongitude,</span>
+<span id="cb1-13"><a href="#cb1-13" tabindex="-1"></a>        <span class="at">data     =</span> df,</span>
+<span id="cb1-14"><a href="#cb1-14" tabindex="-1"></a>        <span class="at">clusters =</span> cat_b)</span>
+<span id="cb1-15"><a href="#cb1-15" tabindex="-1"></a>)</span></code></pre></div>
+</div>
+<div id="fixestfeglm" class="section level3">
+<h3>fixest::feglm</h3>
+<div class="sourceCode" id="cb2"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" tabindex="-1"></a><span class="fu">DAGassist</span>(</span>
+<span id="cb2-2"><a href="#cb2-2" tabindex="-1"></a>    <span class="at">dag =</span> dag_model2,</span>
+<span id="cb2-3"><a href="#cb2-3" tabindex="-1"></a>    <span class="at">formula =</span> fixest<span class="sc">::</span><span class="fu">feglm</span>(</span>
+<span id="cb2-4"><a href="#cb2-4" tabindex="-1"></a>        exc_eq <span class="sc">~</span> cat4_prevalence_best <span class="sc">+</span> nonvprotgovt <span class="sc">+</span> v2x_gencs <span class="sc">+</span></span>
+<span id="cb2-5"><a href="#cb2-5" tabindex="-1"></a>            WINGOImputed_fill <span class="sc">+</span> UNintervention <span class="sc">+</span> majpowintervention <span class="sc">+</span> UNwomen <span class="sc">+</span> </span>
+<span id="cb2-6"><a href="#cb2-6" tabindex="-1"></a>            religious <span class="sc">+</span> ideolleft <span class="sc">+</span> lgt <span class="sc">+</span> substantive <span class="sc">+</span> v2x_gencl <span class="sc">+</span> </span>
+<span id="cb2-7"><a href="#cb2-7" tabindex="-1"></a>            Krause_wpm_neg <span class="sc">+</span> eqgen_binary,</span>
+<span id="cb2-8"><a href="#cb2-8" tabindex="-1"></a>        <span class="at">data =</span> df <span class="sc">%&gt;%</span> <span class="fu">filter</span>(interstateonly<span class="sc">==</span><span class="dv">0</span>, inter_intrastate<span class="sc">==</span><span class="dv">0</span>),</span>
+<span id="cb2-9"><a href="#cb2-9" tabindex="-1"></a>        <span class="at">family =</span> <span class="fu">binomial</span>(<span class="st">&quot;logit&quot;</span>),</span>
+<span id="cb2-10"><a href="#cb2-10" tabindex="-1"></a>        <span class="at">cluster =</span> <span class="sc">~</span>cowcode</span>
+<span id="cb2-11"><a href="#cb2-11" tabindex="-1"></a>    )</span>
+<span id="cb2-12"><a href="#cb2-12" tabindex="-1"></a>)</span></code></pre></div>
+</div>
+<div id="fixestfeols" class="section level3">
+<h3>fixest::feols</h3>
+<div class="sourceCode" id="cb3"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" tabindex="-1"></a></span>
+<span id="cb3-2"><a href="#cb3-2" tabindex="-1"></a><span class="fu">DAGassist</span>(</span>
+<span id="cb3-3"><a href="#cb3-3" tabindex="-1"></a>  <span class="at">dag =</span> dag_model,</span>
+<span id="cb3-4"><a href="#cb3-4" tabindex="-1"></a>  <span class="at">formula =</span> fixest<span class="sc">::</span><span class="fu">feols</span>(</span>
+<span id="cb3-5"><a href="#cb3-5" tabindex="-1"></a>    psoe <span class="sc">~</span> time <span class="sc">*</span> treated2 <span class="sc">+</span> log_pop <span class="sc">+</span> no_education <span class="sc">+</span> growthunemployment<span class="sc">+</span> </span>
+<span id="cb3-6"><a href="#cb3-6" tabindex="-1"></a>      men_50_rs <span class="sc">+</span> immigration_rs <span class="sc">+</span> ebal_w <span class="sc">|</span> province,</span>
+<span id="cb3-7"><a href="#cb3-7" tabindex="-1"></a>    <span class="at">data =</span> df,</span>
+<span id="cb3-8"><a href="#cb3-8" tabindex="-1"></a>    <span class="at">cluster =</span> <span class="sc">~</span>municipality)</span>
+<span id="cb3-9"><a href="#cb3-9" tabindex="-1"></a>)</span></code></pre></div>
+</div>
+<div id="lfefelm" class="section level3">
+<h3>lfe::felm</h3>
+<div class="sourceCode" id="cb4"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" tabindex="-1"></a><span class="fu">DAGassist</span>(<span class="at">dag=</span>dag_model,</span>
+<span id="cb4-2"><a href="#cb4-2" tabindex="-1"></a>          <span class="at">formula =</span> lfe<span class="sc">::</span><span class="fu">felm</span>(</span>
+<span id="cb4-3"><a href="#cb4-3" tabindex="-1"></a>              share_female <span class="sc">~</span> lag_democracy_stock_poly_95 <span class="sc">+</span> lag_v2xcl_rol <span class="sc">+</span> </span>
+<span id="cb4-4"><a href="#cb4-4" tabindex="-1"></a>                  lag_v2xcl_prpty <span class="sc">+</span> lag_v2x_rule <span class="sc">+</span> lag_v2x_jucon <span class="sc">+</span></span>
+<span id="cb4-5"><a href="#cb4-5" tabindex="-1"></a>                  lag_v2xlg_legcon <span class="sc">+</span> lag_v2x_corr <span class="sc">+</span> lag_v2clstown <span class="sc">+</span> </span>
+<span id="cb4-6"><a href="#cb4-6" tabindex="-1"></a>                  lag_v2xcs_ccsi <span class="sc">+</span> lag_v2xps_party <span class="sc">|</span> year <span class="sc">+</span> country_isocode <span class="sc">|</span> <span class="dv">0</span> <span class="sc">|</span> </span>
+<span id="cb4-7"><a href="#cb4-7" tabindex="-1"></a>                  country_isocode,</span>
+<span id="cb4-8"><a href="#cb4-8" tabindex="-1"></a>              <span class="at">data=</span>df_cross)</span>
+<span id="cb4-9"><a href="#cb4-9" tabindex="-1"></a>)</span></code></pre></div>
+</div>
+<div id="lme4glmer" class="section level3">
+<h3>lme4::glmer</h3>
+<div class="sourceCode" id="cb5"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" tabindex="-1"></a></span>
+<span id="cb5-2"><a href="#cb5-2" tabindex="-1"></a><span class="fu">DAGassist</span>(</span>
+<span id="cb5-3"><a href="#cb5-3" tabindex="-1"></a>    <span class="at">dag =</span> dag_model,</span>
+<span id="cb5-4"><a href="#cb5-4" tabindex="-1"></a>    <span class="at">formula =</span> lme4<span class="sc">::</span><span class="fu">glmer</span>(</span>
+<span id="cb5-5"><a href="#cb5-5" tabindex="-1"></a>        dsu_file <span class="sc">~</span> specific <span class="sc">+</span> lnearnings <span class="sc">+</span> distortion <span class="sc">+</span> progress <span class="sc">+</span> duration <span class="sc">+</span></span>
+<span id="cb5-6"><a href="#cb5-6" tabindex="-1"></a>            eu <span class="sc">+</span> japan <span class="sc">+</span> mexico <span class="sc">+</span> korea <span class="sc">+</span> nonoecd <span class="sc">+</span> </span>
+<span id="cb5-7"><a href="#cb5-7" tabindex="-1"></a>            lntotdirx <span class="sc">+</span> lnprod <span class="sc">+</span> lnpolcon <span class="sc">+</span> active301 <span class="sc">+</span></span>
+<span id="cb5-8"><a href="#cb5-8" tabindex="-1"></a>            (<span class="dv">1</span> <span class="sc">|</span> isic3_4dig),</span>
+<span id="cb5-9"><a href="#cb5-9" tabindex="-1"></a>        <span class="at">data   =</span> df,</span>
+<span id="cb5-10"><a href="#cb5-10" tabindex="-1"></a>        <span class="at">family =</span> <span class="fu">binomial</span>(<span class="at">link =</span> <span class="st">&quot;logit&quot;</span>),</span>
+<span id="cb5-11"><a href="#cb5-11" tabindex="-1"></a>        <span class="at">control =</span> <span class="fu">glmerControl</span>(<span class="at">optimizer =</span> <span class="st">&quot;bobyqa&quot;</span>))</span>
+<span id="cb5-12"><a href="#cb5-12" tabindex="-1"></a>)</span></code></pre></div>
+</div>
+<div id="lmertestlmer" class="section level3">
+<h3>lmerTest::lmer</h3>
+<div class="sourceCode" id="cb6"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" tabindex="-1"></a></span>
+<span id="cb6-2"><a href="#cb6-2" tabindex="-1"></a><span class="fu">DAGassist</span>(</span>
+<span id="cb6-3"><a href="#cb6-3" tabindex="-1"></a>    <span class="at">dag =</span> dag_model,</span>
+<span id="cb6-4"><a href="#cb6-4" tabindex="-1"></a>    <span class="at">formula =</span> lmerTest<span class="sc">::</span><span class="fu">lmer</span>(</span>
+<span id="cb6-5"><a href="#cb6-5" tabindex="-1"></a>        ekloges_PERCENTAGE_May_2012_GD <span class="sc">~</span> ekloges_PERCENTAGE_2009_GD <span class="sc">+</span></span>
+<span id="cb6-6"><a href="#cb6-6" tabindex="-1"></a>            N_AntifaEvent_notzero2_Oc09_May12 <span class="sc">+</span> avg_age <span class="sc">+</span> log_population  <span class="sc">+</span></span>
+<span id="cb6-7"><a href="#cb6-7" tabindex="-1"></a>            prop_ksenoi <span class="sc">+</span> (<span class="dv">1</span><span class="sc">|</span>code_perif), </span>
+<span id="cb6-8"><a href="#cb6-8" tabindex="-1"></a>        <span class="at">data=</span>dta))</span></code></pre></div>
+</div>
+<div id="massglm.nb" class="section level3">
+<h3>MASS::glm.nb</h3>
+<div class="sourceCode" id="cb7"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" tabindex="-1"></a><span class="fu">DAGassist</span>(</span>
+<span id="cb7-2"><a href="#cb7-2" tabindex="-1"></a>  <span class="at">dag =</span> dag_model,</span>
+<span id="cb7-3"><a href="#cb7-3" tabindex="-1"></a>  <span class="at">formula =</span> MASS<span class="sc">::</span><span class="fu">glm.nb</span>(</span>
+<span id="cb7-4"><a href="#cb7-4" tabindex="-1"></a>    protestcount <span class="sc">~</span> civilcas_percapita <span class="sc">+</span> sigact_percapita <span class="sc">+</span> log_pop <span class="sc">+</span> shiapop_perc</span>
+<span id="cb7-5"><a href="#cb7-5" tabindex="-1"></a>      kurdpop_perc <span class="sc">+</span> urban <span class="sc">+</span> totaloilvolx <span class="sc">+</span> lognearestcity <span class="sc">+</span> feb2011 <span class="sc">+</span> nov2010 <span class="sc">+</span></span>
+<span id="cb7-6"><a href="#cb7-6" tabindex="-1"></a>      laggedprotestcount <span class="sc">+</span> illiterate <span class="sc">+</span> incomequintilelowest <span class="sc">+</span> </span>
+<span id="cb7-7"><a href="#cb7-7" tabindex="-1"></a>      incomequintilehighest <span class="sc">+</span> urate <span class="sc">+</span> powercontinuous,</span>
+<span id="cb7-8"><a href="#cb7-8" tabindex="-1"></a>    <span class="at">data =</span> iraqevents_timeseries_small,</span>
+<span id="cb7-9"><a href="#cb7-9" tabindex="-1"></a>    <span class="at">control =</span> <span class="fu">glm.control</span>(<span class="at">maxit =</span> <span class="dv">50</span>),</span>
+<span id="cb7-10"><a href="#cb7-10" tabindex="-1"></a>    <span class="at">link =</span> <span class="st">&quot;log&quot;</span>)</span>
+<span id="cb7-11"><a href="#cb7-11" tabindex="-1"></a>)</span></code></pre></div>
+</div>
+<div id="statslm" class="section level3">
+<h3>stats::lm</h3>
+<div class="sourceCode" id="cb8"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" tabindex="-1"></a><span class="fu">DAGassist</span>(</span>
+<span id="cb8-2"><a href="#cb8-2" tabindex="-1"></a>  <span class="at">dag =</span> dag_model,</span>
+<span id="cb8-3"><a href="#cb8-3" tabindex="-1"></a>  <span class="at">formula =</span> stats<span class="sc">::</span><span class="fu">lm</span>(</span>
+<span id="cb8-4"><a href="#cb8-4" tabindex="-1"></a>    restraint <span class="sc">~</span> nonvio2 <span class="sc">+</span> prime_frat <span class="sc">+</span> prime_future <span class="sc">+</span> prime_RU <span class="sc">+</span> prime_UN <span class="sc">+</span> </span>
+<span id="cb8-5"><a href="#cb8-5" tabindex="-1"></a>      oppose92coup2 <span class="sc">+</span> civwar <span class="sc">+</span> islamist <span class="sc">+</span> supp_sharia <span class="sc">+</span> active <span class="sc">+</span> conscript <span class="sc">+</span> </span>
+<span id="cb8-6"><a href="#cb8-6" tabindex="-1"></a>      soldier <span class="sc">+</span> junoff <span class="sc">+</span> senoff <span class="sc">+</span> branch2 <span class="sc">+</span> train_west <span class="sc">+</span> train_russia <span class="sc">+</span> </span>
+<span id="cb8-7"><a href="#cb8-7" tabindex="-1"></a>      train_china <span class="sc">+</span> young <span class="sc">+</span> sex <span class="sc">+</span> edu <span class="sc">+</span> urban_area <span class="sc">+</span> employed <span class="sc">+</span> student <span class="sc">+</span> </span>
+<span id="cb8-8"><a href="#cb8-8" tabindex="-1"></a>      arabic <span class="sc">+</span> econ1 <span class="sc">+</span> corr1 <span class="sc">+</span> dem <span class="sc">+</span> supp_opp_parties <span class="sc">+</span> continue <span class="sc">+</span> protested <span class="sc">+</span> </span>
+<span id="cb8-9"><a href="#cb8-9" tabindex="-1"></a>      preboutef <span class="sc">+</span> post_exp <span class="sc">+</span> mon <span class="sc">+</span> <span class="fu">factor</span>(fgov), </span>
+<span id="cb8-10"><a href="#cb8-10" tabindex="-1"></a>    <span class="at">data=</span>data)</span>
+<span id="cb8-11"><a href="#cb8-11" tabindex="-1"></a>)</span></code></pre></div>
+</div>
+</div>
+
+
+
+<!-- code folding -->
+
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>
