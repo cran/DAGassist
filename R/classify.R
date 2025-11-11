@@ -1,44 +1,42 @@
 #' Classify DAG nodes
 #'
-#' Labels each node as one of: `exposure`, `outcome`, `confounder`,
-#' `mediator`, `collider`, `descendant_of_outcome`, or `other`.
+#' Labels each node by causal role in a console tabular grid. This function is
+#' mostly used as an internal helper, but can be used on its own. Users are 
+#' encouraged to alternatively use `DAGassist::DAGassist(show=roles)` for role
+#' table specific output.
 #'
-#' label definitions
-#' *confounder* -- ancestor of both X and Y, and not a descendant of X
-#' *mediator* -- descendant of X and ancestor of Y
-#' *collider* -- node with 2 or more parents on an X / Y path (non-structural)
-#' *descendant_of_outcome* -- any descendant of Y
-#' `exposure` / `outcome` labeled explicitly in function call
-#'
-#' Notes:
-#' - in definitions, x is exposure and y is outcome
-#' - structural colliders are calculated, but only to define non-structural. 
-#'   structural colliders are not included as a boolean flag
-#' - A node may satisfy multiple properties; we also return boolean flags
-#'   for each property. The `role` column gives a single "primary" label
-#'   using the precedence defined below.
+#' @note 
+#' Roles legend:
+#' `Exp.` = exposure 
+#' `Out.` = outcome 
+#' `CON` = confounder
+#' `MED` = mediator
+#' `COL` = collider
+#' `dOut` = descendant of Out.
+#' `dMed` = descendant of any mediator,
+#' `dCol` = descendant of any collider 
+#' `dConfOn` = descendant of a confounder on a back-door path 
+#' `dConfOff` = descendant of a confounder off a back-door path 
+#' `NCT` = neutral control on treatment 
+#' `NCO` = neutral control on outcome 
 #'
 #' @param dag A `dagitty` DAG object.
-#' @param exposure Optional-- inferred from DAG if not set; character; exposure node name (X). 
-#' @param outcome  Optional-- inferred from DAG if not set; character; outcome node name (Y).
+#' @param exposure Optional-- inferred from DAG if not set; character; exposure node name (Exp.). 
+#' @param outcome  Optional-- inferred from DAG if not set; character; outcome node name (Out.).
 #'
 #' @return A data.frame with one row per node and columns:
 #'   - `variable` (node name)
 #'   - logical flags: `is_exposure`, `is_outcome`, `is_confounder`,
-#'     `is_mediator`, `is_collider`, `is_descendant_of_outcome`,
-#'     `is_descendant_of_exposure`
+#'     `is_mediator`, `is_collider`, `is_neutral_on_treatment`,
+#'     `is_neutral_on_outcome`, `is_descendant_of_mediator`,
+#'     `is_descendant_of_collider`, `is_descendant_of_confounder_on_bdp`,
+#'     `is_descendant_of_confounder_off_bdp`
 #'   - `role` (a single primary label)
 #'
 #' @examples
-#'   d1 <- dagitty::dagitty("dag { Z -> X; Z -> Y; X -> Y }") # confounder Z
-#'   classify_nodes(d1, exposure = "X", outcome = "Y")
-#'
-#'   d2 <- dagitty::dagitty("dag { X -> M -> Y }") # mediator M
-#'   classify_nodes(d2, "X", "Y")
-#'
-#'   d3 <- dagitty::dagitty("dag { X -> C <- Y }") # collider C
-#'   classify_nodes(d3, "X", "Y")
-#' 
+#'   d1 <- dagitty::dagitty("dag {X[exposure];Y[outcome] Z -> X; Z -> Y; X -> Y }") 
+#'   classify_nodes(d1)
+#'   
 #' @export
 classify_nodes <- function(dag, exposure, outcome) {
   # run input checks
@@ -54,91 +52,56 @@ classify_nodes <- function(dag, exposure, outcome) {
   # of course, some will have multiple treatments or outcomes, in which case users
   # will need to pick one of each. 
   ## this lets users leave X and Y params empty and infer from dagitty object
-  
-  if (missing(exposure) || !nzchar(exposure)) {
+  #modified to allow exposure vector, rather than forcing single treatment
+  if (missing(exposure) || !length(exposure) || !nzchar(paste(exposure, collapse = ""))) {
     ex <- tryCatch(dagitty::exposures(dag), error = function(e) character(0))
-    if (length(ex) == 1) {
-      exposure <- ex
-    } else {
-      stop("Please supply `exposure=`; DAG has ", length(ex), " exposure(s).", call. = FALSE)
+    if (length(ex) == 0L) {
+      stop("Please supply `exposure=`; DAG has 0 exposures.", call. = FALSE)
     }
+    exposure <- ex
   }
+  exposure <- as.character(exposure)
+  
   if (missing(outcome) || !nzchar(outcome)) {
     out <- tryCatch(dagitty::outcomes(dag), error = function(e) character(0))
-    if (length(out) == 1) {
-      outcome <- out
-    } else {
+    if (length(out) != 1L) {
       stop("Please supply `outcome=`; DAG has ", length(out), " outcome(s).", call. = FALSE)
     }
+    outcome <- out
   }
-  
   nodes <- names(dag)
-  if (!exposure %in% nodes) stop("Exposure '", exposure, "' not found in DAG.", call. = FALSE)
-  if (!outcome  %in% nodes) stop("Outcome '",  outcome,  "' not found in DAG.", call. = FALSE)
-  
-  # ancestors and descendants of exposure and outcome, which will be useful later
-  ancX  <- dagitty::ancestors(dag, exposure)
-  ancY  <- dagitty::ancestors(dag, outcome)
-  # without setdiff, it will set x and y as their own descendants
-  descX <- setdiff(dagitty::descendants(dag, exposure), exposure)
-  descY <- setdiff(dagitty::descendants(dag, outcome),  outcome)
-  
-  ## this part determines colliders on an x/y path. first it has to determine 
-  ## neighbors and vertex chains ...
-  # determine neighbors function 
-  neighbors_of <- function(g, node) {
-    union(dagitty::parents(g, node), dagitty::children(g, node))
+  missing_x <- setdiff(exposure, nodes)
+  if (length(missing_x)) {
+    stop("Exposure(s) not found in DAG: ", paste(missing_x, collapse = ", "), call. = FALSE)
   }
-  # All nodes you can reach from `start` without ever passing through `ban`
-  reachable_without <- function(g, start, ban) {
-    # if the start itself is banned, you can't go anywhere
-    if (identical(start, ban)) return(character(0))
-    
-    seen  <- character(0)   # nodes we've already visited
-    queue <- start          # nodes we still need to visit (BFS queue)
-    
-    while (length(queue) > 0) {
-      # take the first node from the queue
-      node  <- queue[1]
-      queue <- queue[-1]
-      # skip if we've already processed it
-      if (node %in% seen) next
-      seen <- c(seen, node)
-      # find neighbors, but never allow stepping into the banned node
-      nb <- neighbors_of(g, node)
-      nb <- setdiff(nb, ban)
-      # add unseen neighbors to the queue (avoid duplicates)
-      to_add <- setdiff(nb, c(seen, queue))
-      if (length(to_add)) queue <- c(queue, to_add)
-    }
-    seen
+  if (!outcome %in% nodes) {
+    stop("Outcome '", outcome, "' not found in DAG.", call. = FALSE)
   }
-  ## collider test
-  # A node m is a collider if both X and Y are direct parents
-  #  - it has >= 2 parents pX and pY, such that
-  #     - pX is reachable from X without passing through m
-  #     - pY is reachable from Y without passing through m
-  # this logic captures both direct X->m<-Y AND
-  # indirect X->[...]->pX->m<-pY<-[...]<-Y 
+  
+  # ancestors and descendants of exposure and outcome
+  # aggregated over all exposures
+  ancX <- unique(unlist(lapply(exposure, function(x) dagitty::ancestors(dag, x))))
+  ancY <- dagitty::ancestors(dag, outcome)
+  
+  descX <- unique(unlist(lapply(exposure, function(x) {
+    setdiff(dagitty::descendants(dag, x), x)
+  })))
+  descY <- setdiff(dagitty::descendants(dag, outcome), outcome)
+  
   is_xy_collider <- function(m) {
     parents_m <- dagitty::parents(dag, m)
-    (exposure %in% parents_m) && (outcome %in% parents_m)
+    (length(intersect(exposure, parents_m)) > 0L) && (outcome %in% parents_m)
   }
+  nodes_vec <- names(dag)
   
-  # Evaluate collider status for all nodes
-  nodes <- names(dag)
-  is_collider <- vapply(nodes, is_xy_collider, logical(1))
+  is_collider <- vapply(nodes_vec, is_xy_collider, logical(1))
+  collider_set <- nodes_vec[is_collider]
   
-  ### definition sets
-  
-  #filter down to collider = TRUE
-  collider_set <- nodes[is_collider]
-  # not a descendant of X -- have to use setdiff or X will show as a confounder sometimes
-  conf_set <- setdiff(intersect(ancX, ancY), c(descX, exposure, outcome)) 
-  med_set <- setdiff(intersect(descX, ancY), c(exposure, outcome))  # desc X/anc Y, not endpoint
-  doY_set <- descY # descendants of outcome
-  doX_set <- setdiff(descX, exposure) # descendants of exposure (not X itself)
-  # descendants of mediators and colliders for display flags
+  ## vector compatible definition sets
+  conf_set <- setdiff(intersect(ancX, ancY), c(descX, exposure, outcome))
+  med_set <- setdiff(intersect(descX, ancY), c(exposure, outcome))
+  doY_set <- descY
+  # descendants of mediators / colliders
   dmed_set <- character(0)
   if (length(med_set)) {
     for (m in med_set) {
@@ -151,39 +114,98 @@ classify_nodes <- function(dag, exposure, outcome) {
       dcol_set <- union(dcol_set, setdiff(dagitty::descendants(dag, c), c))
     }
   }
+
+  ##  neutral definitions 
+  # neutral control on treatment: affects T, does not affect Y, not desc of X, 
+  # not X/Y, not already core
+  core_block <- c(
+    conf_set, med_set, collider_set,
+    dmed_set, dcol_set,
+    descY # if it affects Y (downstream), it can't be neutral on T
+  )
+  neutral_trt_set <- setdiff(
+    ancX,
+    c(ancY, descX, exposure, outcome, core_block)
+  )
   
-  # assign boolean flags by set
+  # neutral control on outcome: affects Y, does not affect T, not desc of X or 
+  # Y, not X/Y, not already core
+  neutral_out_set <- setdiff(
+    ancY,
+    c(ancX, descX, descY, exposure, outcome, core_block)
+  )
+  
+  dconf_on_set  <- character(0)
+  dconf_off_set <- character(0)
+  if (length(conf_set)) {
+    for (cz in conf_set) {
+      # every directed descendant of the confounder
+      desc_cz <- setdiff(dagitty::descendants(dag, cz), cz)
+      if (!length(desc_cz)) next
+      
+      # drop exposure side / mediator side / Y itself so we don’t overwrite
+      # existing roles (mediator, outcome, etc.)
+      desc_cz <- setdiff(desc_cz, c(exposure, descX, outcome))
+      
+      # “on backdoor path” = still an ancestor of Y
+      on_path  <- intersect(desc_cz, ancY)
+      off_path <- setdiff(desc_cz, on_path)
+      
+      dconf_on_set  <- union(dconf_on_set,  on_path)
+      dconf_off_set <- union(dconf_off_set, off_path)
+    }
+  }
+  ## build df
   df <- data.frame(
-    variable                   = nodes,
-    is_exposure                = nodes == exposure,
-    is_outcome                 = nodes == outcome,
-    is_confounder              = nodes %in% conf_set,
-    is_mediator                = nodes %in% med_set,
-    is_collider                = nodes %in% collider_set,
-    is_descendant_of_outcome   = nodes %in% doY_set,
-    #is_descendant_of_exposure  = nodes %in% doX_set,
-    is_descendant_of_mediator  = nodes %in% dmed_set,
-    is_descendant_of_collider  = nodes %in% dcol_set,
+    variable = nodes_vec,
+    is_exposure = nodes_vec %in% exposure,
+    is_outcome = nodes_vec == outcome,
+    is_confounder = nodes_vec %in% conf_set,
+    is_mediator = nodes_vec %in% med_set,
+    is_collider = nodes_vec %in% collider_set,
+    is_neutral_on_treatment = nodes_vec %in% neutral_trt_set,
+    is_neutral_on_outcome   = nodes_vec %in% neutral_out_set,
+    is_descendant_of_outcome = nodes_vec %in% doY_set,
+    is_descendant_of_mediator = nodes_vec %in% dmed_set,
+    is_descendant_of_collider = nodes_vec %in% dcol_set,
+    is_descendant_of_confounder_on_bdp  = nodes_vec %in% dconf_on_set,
+    is_descendant_of_confounder_off_bdp = nodes_vec %in% dconf_off_set,
     stringsAsFactors = FALSE
   )
   
-  # choose primary flag by node
-  # precedence is reverse-sequential
+  ## ensure X and Y rows are clean
+  xy <- df$is_exposure | df$is_outcome
+  flag_cols <- c(
+    "is_confounder",
+    "is_mediator",
+    "is_collider",
+    "is_neutral_on_treatment",
+    "is_neutral_on_outcome",
+    "is_descendant_of_outcome",
+    "is_descendant_of_mediator",
+    "is_descendant_of_collider",
+    "is_descendant_of_confounder_on_bdp",
+    "is_descendant_of_confounder_off_bdp"
+  )
+  df[xy, flag_cols] <- FALSE
+  
+  ## role precedence (later = higher)
   role <- rep("other", nrow(df))
+  role[df$is_descendant_of_confounder_off_bdp] <- "Dconf_off"
+  role[df$is_descendant_of_confounder_on_bdp]  <- "Dconf_on"
+  role[df$is_neutral_on_treatment] <- "nct"
+  role[df$is_neutral_on_outcome] <- "nco"
   role[df$is_confounder] <- "confounder"
   role[df$is_descendant_of_mediator] <- "Dmediator"
   role[df$is_descendant_of_collider] <- "Dcollider"
-  role[df$is_mediator]<- "mediator"
-  role[df$is_descendant_of_outcome] <- "intOut"
+  role[df$is_mediator] <- "mediator"
+  role[df$is_descendant_of_outcome] <- "dOut"
   role[df$is_collider] <- "collider"
   role[df$is_outcome] <- "outcome"
   role[df$is_exposure] <- "exposure"
   
-  #write to df
   df$role <- role
-  # make class so we can tidy up output next
-  class(df) <- c("DAGassist_roles", class(df))  
-  #output
+  class(df) <- c("DAGassist_roles", class(df))
   df
 }
 
@@ -199,7 +221,8 @@ print.DAGassist_roles <- function(x, n = Inf, ...) {
   # order exposure and outcome at the top every time, then everything else
   role_order <- c("confounder","mediator","collider",
                   "descendant_of_outcome","descendant_of_collider",
-                  "descendant_of_mediator","other")
+                  "descendant_of_mediator", "Dconf_on","Dconf_off",
+                  "neutral_on_treatment","neutral_on_outcome", "other")
   ord <- order(
     !df$is_exposure,  # exposures first
     !df$is_outcome,   # outcomes next
@@ -215,14 +238,18 @@ print.DAGassist_roles <- function(x, n = Inf, ...) {
   out <- data.frame(
     variable = df$variable,
     role = df$role,
-    X = tick(df$is_exposure),
-    Y = tick(df$is_outcome),
+    "Exp." = tick(df$is_exposure),
+    "Out." = tick(df$is_outcome),
     conf = tick(df$is_confounder),
     med = tick(df$is_mediator),
     col = tick(df$is_collider),
-    IO = tick(df$is_descendant_of_outcome),
+    dOut = tick(df$is_descendant_of_outcome),
     dMed = tick(df$is_descendant_of_mediator),
     dCol = tick(df$is_descendant_of_collider),
+    dConfOn  = tick(df$is_descendant_of_confounder_on_bdp),
+    dConfOff = tick(df$is_descendant_of_confounder_off_bdp),
+    NCT = tick(df$is_neutral_on_treatment),
+    NCO = tick(df$is_neutral_on_outcome),
     check.names = FALSE,
     stringsAsFactors = FALSE
   )

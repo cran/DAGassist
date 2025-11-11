@@ -4,13 +4,42 @@ knitr::opts_chunk$set(
   comment = "#>"
 )
 
+## ----dev-load, include=FALSE--------------------------------------------------
+# Prefer source build when available (works in RStudio, pkgdown, or local render)
+if (requireNamespace("devtools", quietly = TRUE) && file.exists(file.path("..","DESCRIPTION"))) {
+  # Don't error on CRAN/build machines that don't have devtools or the source path
+  try(devtools::load_all("..", quiet = TRUE), silent = TRUE)
+}
+
+# If we've already loaded from source, avoid re-attaching a different installed build later
+from_source <- try({
+  "DAGassist" %in% loadedNamespaces() &&
+    grepl(normalizePath(".."), getNamespaceInfo(asNamespace("DAGassist"), "path"), fixed = TRUE)
+}, silent = TRUE)
+from_source <- isTRUE(from_source)
+
+# Feature gates (computed *after* attempting load_all)
+has_show <- tryCatch({
+  "show" %in% names(formals(DAGassist::DAGassist))
+}, error = function(e) FALSE)
+
+# Robust check: dev build defines a private .report_dotwhisker helper
+has_dotwhisker <- tryCatch({
+  exists(".report_dotwhisker", envir = asNamespace("DAGassist"), inherits = FALSE)
+}, error = function(e) FALSE)
+
 ## ----install, eval=FALSE------------------------------------------------------
+# # install development release from github
 # install.packages("pak")
 # pak::pak("grahamgoff/DAGassist")
+# 
+# # or, install stable release from CRAN
+# install.packages("DAGassist")
+# 
+# #load DAGassist
+# library(DAGassist)
 
 ## ----helpers------------------------------------------------------------------
-#load DAGassist
-library(DAGassist) 
 #load libraries to help export
 library(modelsummary)
 library(writexl)
@@ -115,4 +144,21 @@ DAGassist(dag = dag_model, #specify a dagitty or ggdag object
           out = out_txt) #a temporary directory, for the purpose of this vignette
 
 cat(readLines(out_txt), sep = "\n") # show the output
+
+## ----roles-subreport, eval=has_show-------------------------------------------
+DAGassist(dag = dag_model,
+          show = "roles")
+
+## ----dotwhisker, eval=has_dotwhisker, warning=FALSE, fig.width=7--------------
+# Returns a ggplot object (prints if out = NULL; saves if out is a file path)
+DAGassist(dag = dag_model,
+          formula = lm(Y ~ D + G + H + F + A + B + C, data = df),
+          type = "dotwhisker")
+
+## ----spec-canon, results='asis'-----------------------------------------------
+DAGassist(dag = dag_model,
+          formula = lm(Y ~ D + G + H + F + A + B + C, data = df),
+          exclude = c("nct", "nco"),
+          show = "models",
+          type = "text")
 

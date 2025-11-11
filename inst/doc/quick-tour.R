@@ -4,6 +4,30 @@ knitr::opts_chunk$set(
   comment = "#>"
 )
 
+## ----dev-load, include=FALSE--------------------------------------------------
+# Prefer source build when available (works in RStudio, pkgdown, or local render)
+if (requireNamespace("devtools", quietly = TRUE) && file.exists(file.path("..","DESCRIPTION"))) {
+  # Don't error on CRAN/build machines that don't have devtools or the source path
+  try(devtools::load_all("..", quiet = TRUE), silent = TRUE)
+}
+
+# If we've already loaded from source, avoid re-attaching a different installed build later
+from_source <- try({
+  "DAGassist" %in% loadedNamespaces() &&
+    grepl(normalizePath(".."), getNamespaceInfo(asNamespace("DAGassist"), "path"), fixed = TRUE)
+}, silent = TRUE)
+from_source <- isTRUE(from_source)
+
+# Feature gates (computed *after* attempting load_all)
+has_show <- tryCatch({
+  "show" %in% names(formals(DAGassist::DAGassist))
+}, error = function(e) FALSE)
+
+# Robust check: dev build defines a private .report_dotwhisker helper
+has_dotwhisker <- tryCatch({
+  exists(".report_dotwhisker", envir = asNamespace("DAGassist"), inherits = FALSE)
+}, error = function(e) FALSE)
+
 ## ----setup--------------------------------------------------------------------
 library(DAGassist)
 # load helper libraries
@@ -49,4 +73,9 @@ DAGassist(
   out = out_tex) #put your output directory and file name here
 
 cat(readLines(out_tex, n = 15), sep = "\n") # briefly show the output
+
+## ----dotwhisker, eval=has_dotwhisker, warning=FALSE, fig.width=7--------------
+DAGassist(dag = dag_model,
+          formula = lm(Y ~ X + M + Z + A, data = df),
+          type = "dotwhisker")
 

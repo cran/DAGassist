@@ -14,6 +14,31 @@ knitr::opts_chunk$set(
 )
 ```
 
+```{r dev-load, include=FALSE}
+# Prefer source build when available (works in RStudio, pkgdown, or local render)
+if (requireNamespace("devtools", quietly = TRUE) && file.exists(file.path("..","DESCRIPTION"))) {
+  # Don't error on CRAN/build machines that don't have devtools or the source path
+  try(devtools::load_all("..", quiet = TRUE), silent = TRUE)
+}
+
+# If we've already loaded from source, avoid re-attaching a different installed build later
+from_source <- try({
+  "DAGassist" %in% loadedNamespaces() &&
+    grepl(normalizePath(".."), getNamespaceInfo(asNamespace("DAGassist"), "path"), fixed = TRUE)
+}, silent = TRUE)
+from_source <- isTRUE(from_source)
+
+# Feature gates (computed *after* attempting load_all)
+has_show <- tryCatch({
+  "show" %in% names(formals(DAGassist::DAGassist))
+}, error = function(e) FALSE)
+
+# Robust check: dev build defines a private .report_dotwhisker helper
+has_dotwhisker <- tryCatch({
+  exists(".report_dotwhisker", envir = asNamespace("DAGassist"), inherits = FALSE)
+}, error = function(e) FALSE)
+```
+
 # Introduction
 
 This vignette explains how to make publication-grade DAGassist reports in LaTeX,
@@ -21,10 +46,17 @@ Word, Excel, and plaintext. Since this package's primary utility is as a robustn
 check for observational studies, most of its functionality revolves around
 creating reports.
 
-## Install
+## Install and load `DAGassist`
 ```{r install, eval=FALSE}
+# install development release from github
 install.packages("pak")
 pak::pak("grahamgoff/DAGassist")
+
+# or, install stable release from CRAN
+install.packages("DAGassist")
+
+#load DAGassist
+library(DAGassist) 
 ```
 ## Setup
 
@@ -44,8 +76,6 @@ Essentially, to export:
 - **Word** needs `modelsummary`, `knitr`, and `rmarkdown`
  
 ```{r helpers}
-#load DAGassist
-library(DAGassist) 
 #load libraries to help export
 library(modelsummary)
 library(writexl)
@@ -168,5 +198,43 @@ DAGassist(dag = dag_model, #specify a dagitty or ggdag object
 cat(readLines(out_txt), sep = "\n") # show the output
 ```
 
+## Creating sub-reports (roles-only or models-only)
 
+Sometimes you only need one part of the report. Use the `show` argument to generate just the roles grid or just the model comparison:
+
+- `show = "roles"` – produce only the DAG-based roles table.  
+  No model is fitted, and **no `formula` or `data` is required**. This is ideal when your regression engine isn’t supported or you simply want to audit variable roles.
+
+- `show = "models"` – produce only the model comparison (Original / Minimal / Canonical).  
+  Requires a model specification (either a formula or a single engine call); no roles table is printed.
+  
+### Examples
+```{r roles-subreport, eval=has_show}
+DAGassist(dag = dag_model,
+          show = "roles")
+```
+
+## Making a dot‑whisker plot of the key coefficient
+
+```{r dotwhisker, eval=has_dotwhisker, warning=FALSE, fig.width=7}
+# Returns a ggplot object (prints if out = NULL; saves if out is a file path)
+DAGassist(dag = dag_model,
+          formula = lm(Y ~ D + G + H + F + A + B + C, data = df),
+          type = "dotwhisker")
+```
+
+## Using special canonical sets
+
+By default, `DAGassist()` reports the canonical adjustment set, which only excludes non-admissible adjustments (colliders, mediators, and their descendants). Sometimes, users may want to see the canonical set minus certain classes of "neutral" controls, per Hunermund, Louw and Ronkko (2025). The `exclude =` argument enables selective exclusion of neutral controls.
+
+ - `exclude = "nct"` drops neutral controls on the treatment
+ - `exclude = "nco"` drops neutral controls on the outcome
+
+```{r spec-canon, results='asis'}
+DAGassist(dag = dag_model,
+          formula = lm(Y ~ D + G + H + F + A + B + C, data = df),
+          exclude = c("nct", "nco"),
+          show = "models",
+          type = "text")
+```
 
