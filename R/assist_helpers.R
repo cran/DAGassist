@@ -21,59 +21,55 @@
 # duplicate columns downstream. the column will be lableled canonical, so no interp issues
 #presence of Canonical is decided via .same_formula().
 #downstream exporters rely on these names as table headers.
+#updated to add compatability with sequential g estimation via DirectEffects
 .build_named_mods <- function(report) {
-  #start with base
-  mods <- list("Original" = report$models$original)
-  # optional bivariate (distinct from Original)
-  if (!is.null(report$models$bivariate) &&
-      !is.null(report$formulas$bivariate) &&
-      !.same_formula(report$formulas$bivariate, report$formulas$original)) {
-    mods[["Bivariate"]] <- report$models$bivariate
+  
+  mods <- report$models
+  
+  # Base models
+  mods_full <- list("Original" = mods$original)
+  
+  if (!is.null(mods$bivariate)) {
+    mods_full[["Bivariate"]] <- mods$bivariate
   }
-  #number and label minimal sets
-  if (length(report$models$minimal_list)) {
-    for (i in seq_along(report$models$minimal_list)) {
-      mods[[sprintf("Minimal %d", i)]] <- report$models$minimal_list[[i]]
-    } #default minimal 1
-  } else if (length(report$controls_minimal)) {
-    mods[["Minimal 1"]] <- report$models$minimal
+  
+  if (length(mods$minimal_list)) {
+    for (i in seq_along(mods$minimal_list)) {
+      mods_full[[sprintf("Minimal %d", i)]] <- mods$minimal_list[[i]]
+    }
+  } else {
+    mods_full[["Minimal 1"]] <- mods$minimal
   }
-  # separate canonical only if it differs from Original
-  if (!.same_formula(report$formulas$canonical, report$formulas$original)) {
-    mods[["Canonical"]] <- report$models$canonical
-  }
-  if (!is.null(report$models$canonical_excl)) {
-    # new style: list of filtered canonicals, e.g. list(nco = <mod>, nct = <mod>)
-    if (is.list(report$models$canonical_excl)) {
-      for (nm in names(report$models$canonical_excl)) {
+  
+  mods_full[["Canonical"]] <- mods$canonical
+  
+  if (!is.null(mods$canonical_excl)) {
+    cex <- mods$canonical_excl
+    if (is.list(cex)) {
+      for (nm in names(cex)) {
         lbl <- switch(
           nm,
-          nco = "Canon. (-NCO)",
           nct = "Canon. (-NCT)",
-          paste0("Canon. (-", toupper(nm), ")")
+          nco = "Canon. (-NCO)",
+          paste0("Canonical (", nm, ")")
         )
-        mods[[lbl]] <- report$models$canonical_excl[[nm]]
+        mods_full[[lbl]] <- cex[[nm]]
       }
     } else {
-      # backwards-compat: single model
-      exc <- character(0)
-      if (!is.null(report$settings) && !is.null(report$settings$exclude)) {
-        exc <- as.character(report$settings$exclude)
+      # old single-model behavior
+      exc <- report$settings$exclude
+      if (!is.null(exc)) {
+        if (identical(exc, "nct")) lbl <- "Canon. (-NCT)"
+        if (identical(exc, "nco")) lbl <- "Canon. (-NCO)"
+        mods_full[[lbl]] <- cex
       }
-      lbl <- "Canonical (filtered)"
-      if (length(exc)) {
-        lbl <- switch(
-          exc,
-          nco = "Canon. (-NCO)",
-          nct = "Canon. (-NCT)",
-          "Canonical (filtered)"
-        )
-      }
-      mods[[lbl]] <- report$models$canonical_excl
     }
   }
   
-  mods
+  # Add ATE/ATT weighted + ACDE via dispatcher (no-op if RAW)
+  mods_full <- .dagassist_add_estimand_models(report, mods_full)
+  
+  mods_full
 }
 
 # Build a dagitty subgraph restricted to `keep` nodes.
@@ -104,63 +100,85 @@
 ##OUT: df with cols `Model` and `Formula`
 ##NOTES from .build_named_mods apply here too
 .build_models_df <- function(report) {
-  # labels in print order 
-  labs <- c(
-    "Original",
-    if (!is.null(report$formulas$bivariate) &&
-        !.same_formula(report$formulas$bivariate, report$formulas$original))
-      "Bivariate"
-    else character(0),
-    if (length(report$formulas$minimal_list))
-      paste0("Minimal ", seq_along(report$formulas$minimal_list))
-    else if (length(report$controls_minimal))
-      "Minimal 1"
-    else character(0),
-    if (!.same_formula(report$formulas$canonical, report$formulas$original))
-      "Canonical"
-    else character(0),
-    # one label per filtered canonical
-    {
-      if (is.list(report$formulas$canonical_excl) && length(report$formulas$canonical_excl)) {
-        vapply(names(report$formulas$canonical_excl), function(nm) {
-          if (nm == "nct") "Canon. (-NCT)"
-          else if (nm == "nco") "Canon. (-NCO)"
-          else paste0("Canon. (-", toupper(nm), ")")
-        }, character(1))
-      } else if (!is.null(report$formulas$canonical_excl)) {
-        "Canonical (filtered)"
-      } else character(0)
+  
+  f <- report$formulas
+  
+  model_formulas <- list("Original" = f$original)
+  
+  if (!is.null(f$bivariate)) {
+    model_formulas[["Bivariate"]] <- f$bivariate
+  }
+  
+  if (length(f$minimal_list)) {
+    for (i in seq_along(f$minimal_list)) {
+      model_formulas[[sprintf("Minimal %d", i)]] <- f$minimal_list[[i]]
     }
+  } else {
+    model_formulas[["Minimal 1"]] <- f$minimal
+  }
+  
+  model_formulas[["Canonical"]] <- f$canonical
+  
+  if (!is.null(f$canonical_excl)) {
+    cex <- f$canonical_excl
+    if (is.list(cex)) {
+      for (nm in names(cex)) {
+        lbl <- switch(
+          nm,
+          nct = "Canon. (-NCT)",
+          nco = "Canon. (-NCO)",
+          paste0("Canonical (", nm, ")")
+        )
+        model_formulas[[lbl]] <- cex[[nm]]
+      }
+    } else {
+      exc <- report$settings$exclude
+      if (!is.null(exc)) {
+        if (identical(exc, "nct")) lbl <- "Canon. (-NCT)"
+        if (identical(exc, "nco")) lbl <- "Canon. (-NCO)"
+        model_formulas[[lbl]] <- cex
+      }
+    }
+  }
+  
+  # Add derived formula rows for requested estimands (ATE/ATT/ACDE)
+  ests <- .dagassist_normalize_estimand(report$settings$estimand)
+  
+  if ("SATE" %in% ests) {
+    wlab <- .dagassist_model_name_labels("SATE")
+    for (nm in names(model_formulas)) {
+      if (identical(nm, "Original")) next
+      model_formulas[[paste0(nm, " ", wlab)]] <- model_formulas[[nm]]
+    }
+  }
+  
+  if ("SATT" %in% ests) {
+    wlab <- .dagassist_model_name_labels("SATT")
+    for (nm in names(model_formulas)) {
+      if (identical(nm, "Original")) next
+      model_formulas[[paste0(nm, " ", wlab)]] <- model_formulas[[nm]]
+    }
+  }
+  
+  if ("SACDE" %in% ests) {
+    alab <- .dagassist_model_name_labels("SACDE")
+    for (nm in names(model_formulas)) {
+      nm_acde <- paste0(nm, " ", alab)
+      # build sequential_g formula from base model formula
+      model_formulas[[nm_acde]] <- .dagassist_formula_for_model_name(report, nm_acde)
+    }
+  }
+  
+  models_df <- data.frame(
+    model_name = names(model_formulas),
+    formula = vapply(model_formulas, function(ff) paste(deparse(ff), collapse=" "), character(1)),
+    type = rep("comparison", length(model_formulas)),
+    stringsAsFactors = FALSE
   )
   
-  forms <- c(
-    paste(deparse(report$formulas$original), collapse = " "),
-    if (!is.null(report$formulas$bivariate) &&
-        !.same_formula(report$formulas$bivariate, report$formulas$original))
-      paste(deparse(report$formulas$bivariate), collapse = " ")
-    else character(0),
-    if (length(report$formulas$minimal_list))
-      vapply(report$formulas$minimal_list, function(f) paste(deparse(f), collapse = " "), character(1))
-    else if (length(report$controls_minimal))
-      paste(deparse(report$formulas$minimal), collapse = " ")
-    else character(0),
-    if (!.same_formula(report$formulas$canonical, report$formulas$original))
-      paste(deparse(report$formulas$canonical), collapse = " ")
-    else character(0),
-    # one formula per filtered canonical
-    {
-      if (is.list(report$formulas$canonical_excl) && length(report$formulas$canonical_excl)) {
-        vapply(report$formulas$canonical_excl,
-               function(f) paste(deparse(f), collapse = " "),
-               character(1))
-      } else if (!is.null(report$formulas$canonical_excl)) {
-        paste(deparse(report$formulas$canonical_excl), collapse = " ")
-      } else character(0)
-    }
-  )
-  
-  data.frame(Model = labs, Formula = forms, stringsAsFactors = FALSE)
+  list(models_df = models_df, model_formulas = model_formulas)
 }
+
 
 ### infer x and y from the call, so the user does not have to make an  
 ### "engine" call 
@@ -363,6 +381,37 @@
   c(out, trimws(paste(buf, collapse = "")))
 }
 
+# Extract term labels from the k-th top-level '|' block of a formula.
+# k = 1 is the main (pre-|) RHS; k = 2 is the first tail block (FE in fixest/felm),
+# k = 3 is the next block, etc.
+.dagassist_bar_block_terms <- function(fml, k = 2L) {
+  if (!inherits(fml, "formula")) return(character(0))
+  
+  s <- paste(deparse(fml, width.cutoff = 500L), collapse = " ")
+  parts <- .split_top_level(s, sep = "|")
+  if (length(parts) < k) return(character(0))
+  
+  txt <- trimws(parts[[k]])
+  if (!nzchar(txt)) return(character(0))
+  
+  # Build a RHS-only formula and pull term labels
+  rhs_fml <- stats::as.formula(paste0("~", txt), env = environment(fml))
+  
+  # If the block contains no variables (e.g., 1/0/TRUE/FALSE), treat as placeholder
+  expr <- rhs_fml[[2L]]
+  if (!length(all.vars(expr, functions = FALSE))) return(character(0))
+  
+  unique(attr(stats::terms(rhs_fml), "term.labels"))
+}
+
+# Factorize only bare symbols; leave complex terms untouched (i(), interactions, etc.)
+.dagassist_factorize_plain_terms <- function(terms) {
+  if (!length(terms)) return(character(0))
+  is_bare <- grepl("^[.A-Za-z][.A-Za-z0-9._]*$", terms)
+  terms[is_bare] <- paste0("factor(", terms[is_bare], ")")
+  terms
+}
+
 # Helper: collect any calls whose operator is '|' or '||' anywhere in the RHS.
 # This is engine-agnostic and does not import lme4.
 .collect_bar_calls <- function(expr, acc = list()) {
@@ -377,6 +426,130 @@
     }
   }
   acc
+}
+
+# Return FE / grouping variable *names* from common syntaxes:
+#  (a) fixest/lfe tails: y ~ x | FE (+ optional more | blocks)
+#  (b) lme4/nlme random-effects bars on RHS: (1 | FE), (x || FE), etc.
+#
+# We return *names* (e.g., "ID", "year"), not full terms.
+.dagassist_extract_fe_vars <- function(fml) {
+  if (!inherits(fml, "formula")) return(character(0))
+  
+  out <- character(0)
+  
+  # (a) tail block 2 for y ~ x | FE (fixest, felm, etc.)
+  # This uses your existing .dagassist_bar_block_terms().
+  fe_terms <- .dagassist_bar_block_terms(fml, k = 2L)
+  if (length(fe_terms)) {
+    # Convert any complex terms into underlying variable names.
+    # Example: "i(ID, ref=1)" -> "ID"
+    out <- c(out, unique(unlist(lapply(fe_terms, function(tt) {
+      expr <- tryCatch(parse(text = tt)[[1]], error = function(e) NULL)
+      if (is.null(expr)) return(character(0))
+      all.vars(expr, functions = FALSE)
+    }))))
+  }
+  
+  # (b) random-effects grouping variables like (1 | ID) or (x || ID)
+  base <- .strip_fixest_parts(fml)$base
+  rhs  <- tryCatch(base[[3L]], error = function(e) NULL)
+  if (!is.null(rhs)) {
+    bars <- .collect_bar_calls(rhs)
+    if (length(bars)) {
+      re_vars <- unique(unlist(lapply(bars, function(b) {
+        # b is a call like `|`(lhs, group) or `||`(lhs, group)
+        grp <- b[[3L]]
+        all.vars(grp, functions = FALSE)
+      })))
+      out <- c(out, re_vars)
+    }
+  }
+  
+  # Drop constants if they ever leak in via parsing
+  out <- setdiff(unique(out), c("TRUE", "FALSE", "T", "F"))
+  out[nzchar(out)]
+}
+
+# Keep only term strings that reference >=1 real data column.
+# Drops constants like TRUE/FALSE/1/0 and any term that doesn't resolve to data vars.
+.dagassist_terms_must_use_data <- function(terms, data_names) {
+  if (!length(terms)) return(character(0))
+  terms <- unique(trimws(as.character(terms)))
+  terms <- terms[nzchar(terms)]
+  
+  keep <- vapply(terms, function(tt) {
+    expr <- tryCatch(parse(text = tt)[[1L]], error = function(e) NULL)
+    if (is.null(expr)) return(FALSE)
+    
+    vars <- all.vars(expr, functions = FALSE)
+    
+    # constants like TRUE/FALSE typically yield vars==0 or vars=="TRUE"
+    if (!length(vars)) return(FALSE)
+    if (!all(vars %in% data_names)) return(FALSE)
+    TRUE
+  }, logical(1L))
+  
+  terms[keep]
+}
+
+# TRUE if x has no within-group variation (ignoring NAs)
+.dagassist_is_constant_within <- function(x, g) {
+  if (length(x) != length(g)) return(FALSE)
+  sp <- split(x, g, drop = TRUE)
+  all(vapply(sp, function(z) length(unique(z[!is.na(z)])) <= 1L, logical(1)))
+}
+
+# Drop any term whose *single underlying variable* is constant within any FE group.
+# This catches time-invariant-within-ID covariates when unit FE are included, etc.
+.dagassist_drop_terms_collinear_with_fe <- function(terms, data, fe_vars) {
+  if (!length(terms) || !length(fe_vars) || is.null(data)) {
+    return(list(keep = terms, dropped = character(0)))
+  }
+  
+  data_names <- names(data)
+  fe_vars <- intersect(unique(as.character(fe_vars)), data_names)
+  if (!length(fe_vars)) return(list(keep = terms, dropped = character(0)))
+  
+  terms <- unique(trimws(as.character(terms)))
+  terms <- terms[nzchar(terms)]
+  terms <- setdiff(terms, c("0","1","TRUE","FALSE","T","F"))
+  
+  dropped <- character(0)
+  keep <- character(0)
+  
+  for (tt in terms) {
+    vars <- tryCatch(all.vars(parse(text = tt)[[1]], functions = FALSE),
+                     error = function(e) character(0))
+    
+    # Only handle the simple/important case: terms that resolve to exactly one variable.
+    # If it's a composite expression (e.g., log(x), x:z), do not attempt to drop.
+    if (length(vars) != 1L) {
+      keep <- c(keep, tt)
+      next
+    }
+    
+    v <- vars[1]
+    # Don't drop FE terms themselves (factor(ID), ID, etc.)
+    if (v %in% fe_vars || !(v %in% data_names)) {
+      keep <- c(keep, tt)
+      next
+    }
+    
+    # If v is constant within ANY FE group, it is collinear with that FE.
+    collinear <- FALSE
+    for (fe in fe_vars) {
+      if (.dagassist_is_constant_within(data[[v]], data[[fe]])) {
+        collinear <- TRUE
+        dropped <- c(dropped, tt)
+        break
+      }
+    }
+    
+    if (!collinear) keep <- c(keep, tt)
+  }
+  
+  list(keep = unique(keep), dropped = unique(dropped))
 }
 
 # strip fixest FE/IV parts AND preserve random-effect bars (| or ||) from the RHS
@@ -453,9 +626,9 @@
   if (length(sets) == 1L) return(sets[[1L]])
   
   #fallback if multiple canonical sets are ever returned
-  lens       <- vapply(sets, length, integer(1))
+  lens <- vapply(sets, length, integer(1))
   candidates <- sets[lens == min(lens)]
-  keys       <- vapply(candidates, function(s) paste(s, collapse = "|"), character(1))
+  keys <- vapply(candidates, function(s) paste(s, collapse = "|"), character(1))
   candidates[[order(keys)[1]]]
 }
 ###helpers to enable intercept and factor row suppression
@@ -480,6 +653,10 @@
       #match all factor indicators
       fac_pat <- paste0("^((?:factor|as\\.factor)\\s*\\()?(", alt, ")(\\))?(::|:|=|\\b).*$")
       pats <- c(pats, fac_pat)
+      # Also omit *explicit* factor()/as.factor() expansions even when the underlying
+      # data column is numeric/integer (common for FE IDs and years).
+      # Matches: "factor(ID)1354", "as.factor(year)2010", etc.
+      pats <- c(pats, "^\\s*(?:factor|as\\.factor)\\([^\\)]+\\).*")
     }
   }
   
@@ -516,13 +693,76 @@
   }
 }
 
-# Get RHS term labels from the pre-| part so fixest doesn't confuse terms
+##get RHS term labels from the pre-| part so fixest doesn't confuse terms
+#patched to handle glmer fe calls
 .rhs_terms_safe <- function(fml) {
   base <- .strip_fixest_parts(fml)$base
-  attr(stats::terms(base), "term.labels")
+  tl   <- attr(stats::terms(base), "term.labels")
+  
+  # Drop random-effects bar terms (glmer/lmer), because terms() de-parens them
+  # into "1 | group" and eval_all later pastes them back incorrectly.
+  rhs <- tryCatch(base[[3L]], error = function(e) NULL)
+  if (!is.null(rhs)) {
+    bars <- .collect_bar_calls(rhs)
+    if (length(bars)) {
+      bar_txt <- vapply(
+        bars,
+        function(x) paste(deparse(x), collapse = " "),
+        character(1)
+      )
+      norm <- function(x) gsub("\\s+", "", x)
+      tl <- tl[!norm(tl) %in% norm(bar_txt)]
+    }
+  }
+  
+  tl
+}
+# ---- Guardrail helpers (estimand recovery) ----
+# Exposure specified as an *interaction term* (e.g., X1:X2 or X1*X2) is not supported
+# by the estimand-recovery workflows (SATE/SATT/SACDE). Users should precompute a single
+# treatment variable in `data` and use that as the exposure node.
+.dagassist_is_interaction_exposure <- function(exposure) {
+  if (is.null(exposure) || is.na(exposure) || !nzchar(exposure)) return(FALSE)
+  # treat ':' and '*' as interaction operators; ignore whitespace
+  ex <- gsub("\\s+", "", as.character(exposure))
+  grepl("[:*]", ex)
 }
 
-
+# Detect non-linear outcome models (for SACDE guardrail).
+# SACDE/sequential-g is currently only supported for linear outcome models.
+.dagassist_is_nonlinear_fit <- function(fit, engine = NULL) {
+  # GLMMs (logit/probit/etc.)
+  if (inherits(fit, c("glmerMod", "glmmTMB", "stanreg", "brmsfit"))) return(TRUE)
+  
+  # GLMs: allow gaussian(identity), block everything else
+  if (inherits(fit, "glm")) {
+    fam <- tryCatch(fit$family$family, error = function(e) NULL)
+    lnk <- tryCatch(fit$family$link,   error = function(e) NULL)
+    if (is.null(fam) || is.null(lnk)) return(TRUE)
+    return(!(identical(fam, "gaussian") && identical(lnk, "identity")))
+  }
+  
+  # fixest: feols is linear; anything else is non-linear (feglm, fepois, etc.)
+  if (inherits(fit, "fixest")) {
+    mth <- tryCatch(fit$method, error = function(e) NULL)
+    if (!is.null(mth) && nzchar(mth)) {
+      return(!identical(tolower(mth), "feols"))
+    }
+  }
+  
+  # If engine is explicitly provided, use it as a fallback signal.
+  if (!is.null(engine) && is.function(engine)) {
+    if (identical(engine, stats::glm)) return(TRUE)
+    # fixest engines (if installed) - best-effort
+    if (requireNamespace("fixest", quietly = TRUE)) {
+      if (identical(engine, fixest::feglm)) return(TRUE)
+      if (identical(engine, fixest::fepois)) return(TRUE)
+      if (identical(engine, fixest::fenegbin)) return(TRUE)
+    }
+  }
+  
+  FALSE
+}
 ###return ALL minimal adjustment sets as a list 
 ##IN
 #dag--dagitty object
@@ -703,19 +943,47 @@
   
   if (length(failed)) {
     cat("\nFit issues:\n")
-    for (nm in names(failed)) cat(sprintf("  - %s: %s\n", nm, failed[[nm]]$error))
+    # group by identical message to avoid repeating the same wall of text
+    err_txt <- vapply(failed, function(x) {
+      # normalize whitespace a bit so identical messages actually group
+      e <- x$error
+      e <- gsub("[ \t]+", " ", e)
+      e <- gsub("\n{3,}", "\n\n", e)
+      trimws(e)
+    }, character(1))
+    
+    groups <- split(names(err_txt), err_txt)
+    
+    for (msg in names(groups)) {
+      nms <- groups[[msg]]
+      cat("  - ", paste(nms, collapse = ", "), "\n", sep = "")
+      lines <- strsplit(msg, "\n", fixed = TRUE)[[1]]
+      for (ln in lines) cat("      ", ln, "\n", sep = "")
+    }
   }
+  
   if (!length(ok)) {
     cat("\nAll model fits failed - no comparison table to print.\n")
     return(invisible(NULL))
   }
+  #only send successful models to modelsummary
+  mods<-ok
   ##preferred path: modelsummary
   if (requireNamespace("modelsummary", quietly = TRUE)) {
+    #may want to add param to customize gof--or maybe a simple list that can
+    #be passed straight to modelsummary
+    gof_map <- data.frame(
+      raw = c("nobs", "r.squared", "fixef"),
+      clean = c("Num.Obs.", "R2", "Fixed effects"),
+      fmt = c(0, 3, 0),
+      stringsAsFactors = FALSE
+    )
+   
     args <- list(
       mods,
       stars = TRUE,
       output = "markdown",
-      gof_map = NA
+      gof_map = gof_map
     )
     # only pass a VALID rename map (named char, length > 0)
     if (is.character(coef_rename) && length(coef_rename) && length(names(coef_rename))) {
@@ -724,6 +992,43 @@
     if (!is.null(coef_omit)) {
       args$coef_omit <- coef_omit
     }
+    
+    # ---- FIX: modelsummary bug for estimatr::lm_robust with clusters ----
+    # modelsummary's internal glance handler can create a length-nobs "se_type" vector
+    # (e.g., "by: WC011" repeated), which crashes when inserted into 1-row GOF df.
+    # Patch the internal method in-session to drop se_type and use broom::glance.
+    
+    if (requireNamespace("modelsummary", quietly = TRUE) &&
+        requireNamespace("broom", quietly = TRUE)) {
+      
+      ms_ns <- asNamespace("modelsummary")
+      
+      if (exists("glance_custom_internal.lm_robust", envir = ms_ns, inherits = FALSE)) {
+        
+        patched_glance_lm_robust <- function(model,
+                                             vcov_type = NULL,
+                                             gof = NULL,
+                                             gof_function = NULL) {
+          g <- broom::glance(model)
+          
+          # Ensure it's a 1-row data.frame
+          if (!is.data.frame(g)) g <- as.data.frame(g)
+          if (nrow(g) != 1L) g <- g[1, , drop = FALSE]
+          
+          # Drop se_type entirely (this is the crash source)
+          if ("se_type" %in% names(g)) g$se_type <- NULL
+          
+          g
+        }
+        
+        utils::assignInNamespace(
+          x = "glance_custom_internal.lm_robust",
+          value = patched_glance_lm_robust,
+          ns = "modelsummary"
+        )
+      }
+    }
+    
     tab <- do.call(modelsummary::msummary, args)
     cat("\nModel comparison:\n")
     #handle either vector or object
@@ -775,6 +1080,382 @@
     print(utils::head(tryCatch(stats::coef(m), error = function(e) NULL)))
   }
   invisible(NULL)
+}
+
+# Simple ESS (no dependency): (sum w)^2 / sum(w^2)
+.dagassist_ess <- function(w) {
+  w <- w[is.finite(w)]
+  if (!length(w)) return(NA_real_)
+  (sum(w)^2) / sum(w^2)
+}
+
+.dagassist_print_weight_diagnostics <- function(mods_full,
+                                                ess_warn_frac = 0.50,
+                                                extreme_ratio = 20) {
+  #fail fast if the model list is missing or unnamed
+  if (is.null(mods_full) || !length(mods_full) || is.null(names(mods_full))) return(invisible(NULL))
+  # only print diagnostics for weighted columns. identify weighted cols by col name 
+  keep <- grepl("\\((SATE|SATT)\\)\\s*$", names(mods_full), ignore.case = TRUE)
+  mods_use <- mods_full[keep]
+  if (!length(mods_use)) return(invisible(NULL))
+  # header for the diagnostics block
+  cat("\nWeight diagnostics:\n")
+  cat("  legend: w range reports the min-max weights by group; ESS is kish effective sample size.\n")
+  
+  #helper to split a treatment vector into control vs treated indices.
+  #structured to handle logical / 0-1 numeric / factors without assuming labels
+  .split_treat <- function(tr) {
+    # return null if treatment is missing
+    if (is.null(tr) || !length(tr)) return(NULL)
+    # if treatment is logical, false = control, true = treated
+    if (is.logical(tr)) {
+      return(list(control = which(tr %in% FALSE), treated = which(tr %in% TRUE)))
+    }
+    # if treatment is numeric/integer, ONLY split when it is truly 0/1-coded
+    if (is.numeric(tr) || inherits(tr, "integer")) {
+      u <- sort(unique(tr))
+      if (length(u) >= 2 && all(u %in% c(0, 1))) {
+        return(list(control = which(tr == 0), treated = which(tr == 1)))
+      }
+      return(NULL)
+    }
+    #for factor/character treatment, coerce to factor, then pick levels
+    if (is.character(tr)) tr <- factor(tr)
+    if (is.factor(tr)) {
+      lv <- levels(tr)
+      if (length(lv) >= 2) {
+        # if levels are literally "0"/"1", use those
+        if ("0" %in% lv && "1" %in% lv) {
+          return(list(control = which(tr == "0"), treated = which(tr == "1")))
+        }
+        #otherwise, first level = control, second level = treated
+        return(list(control = which(tr == lv[1]), treated = which(tr == lv[2])))
+      }
+    }
+    NULL #cannot split into groups if nothing matched
+  }
+  
+  #helper done-resume normal processing
+  for (nm in names(mods_use)) {
+    # grab the object for this weighted column
+    m <- mods_use[[nm]]
+    # skip placeholder error objects
+    if (inherits(m, "DAGassist_fit_error")) next
+  
+    ## EXTRACT WEIGHTS
+    # prefer dagassist attributes because weighted columns may be marginaleffects objects
+    w <- attr(m, "dagassist_weights", exact = TRUE)
+    # if weights attribute missing, try pulling them from a saved weightit object
+    if (is.null(w)) {
+      wtobj <- attr(m, "dagassist_weightit", exact = TRUE)
+      if (!is.null(wtobj) && is.list(wtobj) && "weights" %in% names(wtobj)) {
+        w <- wtobj$weights
+      }
+    }
+    # final fallback: try stats::weights() for actual model objects
+    if (is.null(w)) {
+      w <- tryCatch(stats::weights(m), error = function(e) NULL)
+    }
+    # if still missing, helpful warning and continue
+    if (is.null(w)) {
+      cat("  ", nm, ": (could not extract weights)\n", sep = "")
+      next
+    }
+
+    ## keep only finite weights (drop na/inf)
+    w_ok <- w[is.finite(w)]
+    n <- length(w_ok)
+    # if nothing finite, print and move on
+    if (!n) {
+      cat("  ", nm, ": (no finite weights)\n", sep = "")
+      next
+    }
+    
+    ## overall summaries
+    # ess uses kish ess: (sum w)^2 / sum(w^2)
+    ess_all <- .dagassist_ess(w_ok)
+    # ess as a fraction of n  
+    ess_frac <- if (is.finite(ess_all) && n > 0) ess_all / n else NA_real_
+    # overall weight range + median (median is used for the "extreme" flag)
+    w_min <- suppressWarnings(min(w_ok, na.rm = TRUE))
+    w_med <- suppressWarnings(stats::median(w_ok, na.rm = TRUE))
+    w_max <- suppressWarnings(max(w_ok, na.rm = TRUE))
+    
+    ## by-group summaries
+    # weightit stores the treatment vector as wtobj$treat for binary treatments
+    wtobj <- attr(m, "dagassist_weightit", exact = TRUE)
+    tr <- NULL
+    if (!is.null(wtobj) && is.list(wtobj) && "treat" %in% names(wtobj)) {
+      tr <- wtobj$treat
+    }
+    # only attempt a split if data/weight col lengths align
+    grp <- NULL
+    if (!is.null(tr) && length(tr) == length(w)) {
+      grp <- .split_treat(tr)
+    }
+    
+    # small inline flags with warnings suppressed to keep console clean
+    #low_ess: ess is less than ess_warn_frac * n
+    #extreme_w: max weight is huge relative to median weight
+    flags <- character(0)
+    if (is.finite(ess_frac) && ess_frac < ess_warn_frac) flags <- c(flags, "LOW_ESS")
+    if (is.finite(w_max) && is.finite(w_med) && w_med > 0 && w_max > extreme_ratio * w_med) {
+      flags <- c(flags, "EXTREME_W")
+    }
+    flag_str <- if (length(flags)) paste0(" [", paste(flags, collapse = ","), "]") else ""
+    
+    if (!is.null(grp) && length(grp$control) && length(grp$treated)) {
+      # split weights into control vs treated
+      wc <- w[grp$control]; wt <- w[grp$treated]
+      # keep finite weights within each group
+      wc_ok <- wc[is.finite(wc)]; wt_ok <- wt[is.finite(wt)]
+      # group-specific ess
+      ess_c <- .dagassist_ess(wc_ok)
+      ess_t <- .dagassist_ess(wt_ok)
+      # one tight line per weighted model (ranges + ess)
+      cat(sprintf(
+        "  %s: w range treated=%s..%s control=%s..%s | ess treated=%s/%d control=%s/%d | ess(all)=%s/%d%s\n",
+        nm,
+        format(signif(min(wt_ok, na.rm = TRUE), 4)),
+        format(signif(max(wt_ok, na.rm = TRUE), 4)),
+        format(signif(min(wc_ok, na.rm = TRUE), 4)),
+        format(signif(max(wc_ok, na.rm = TRUE), 4)),
+        ifelse(is.finite(ess_t), format(round(ess_t, 1)), "NA"), length(wt_ok),
+        ifelse(is.finite(ess_c), format(round(ess_c, 1)), "NA"), length(wc_ok),
+        ifelse(is.finite(ess_all), format(round(ess_all, 1)), "NA"), n,
+        flag_str
+      ))
+    } else {
+      cat(sprintf(
+        "  %s: w range=%s..%s | ESS (weighted)=%s%s\n",
+        nm,
+        format(signif(w_min, 4)),
+        format(signif(w_max, 4)),
+        ifelse(is.finite(ess_all), format(round(ess_all, 2)), "NA"),
+        flag_str
+      ))
+    }
+  }
+  invisible(NULL)
+}
+
+#print ACDE metadata once 
+# Expects ACDE fits to carry attributes set in weights.R.
+.dagassist_print_acde_console_info <- function(mods) {
+  if (is.null(mods) || !length(mods)) return(invisible(NULL))
+  
+  infos <- list()
+  
+  for (nm in names(mods)) {
+    m <- mods[[nm]]
+    f <- attr(m, "dagassist_acde_formula", exact = TRUE)
+    if (is.null(f)) next
+    
+    spec <- attr(m, "dagassist_acde_spec", exact = TRUE)
+    if (is.null(spec) || !nzchar(spec)) spec <- nm
+    
+    dropped <- attr(m, "dagassist_fe_collinear_dropped", exact = TRUE)
+    if (is.null(dropped)) dropped <- character(0)
+    
+    infos[[spec]] <- list(formula = f, dropped = dropped)
+  }
+  
+  if (!length(infos)) return(invisible(NULL))
+  
+  dropped_all <- sort(unique(unlist(lapply(infos, function(z) z$dropped), use.names = FALSE)))
+  
+  cat("\nACDE setup:\n")
+  if (length(dropped_all)) {
+    cat("  FE-collinear dropped: ", paste(dropped_all, collapse = ", "), "\n", sep = "")
+  } else {
+    cat("  FE-collinear dropped: (none)\n")
+  }
+  
+  cat("  Formulas (sequential_g):\n")
+  
+  spec_order <- c("Original", "Minimal 1", "Canonical")
+  specs <- names(infos)
+  ord <- c(intersect(spec_order, specs), setdiff(specs, spec_order))
+  
+  for (sp in ord) {
+    f_txt <- paste(deparse(infos[[sp]]$formula, width.cutoff = 500L), collapse = " ")
+    cat("   - ", sp, ": ", f_txt, "\n", sep = "")
+  }
+  
+  invisible(NULL)
+}
+
+## effect summaries via marginaleffects
+# currently only works for console
+
+.dagassist_print_effect_summaries <- function(report, mods_full,
+                                              only_weighted = TRUE,
+                                              continuous_scale = c("IQR")) {
+  continuous_scale <- match.arg(continuous_scale)
+  
+  if (is.null(mods_full) || !length(mods_full)) return(invisible(NULL))
+  
+  if (!requireNamespace("marginaleffects", quietly = TRUE)) {
+    cat("\nEffect summaries (response scale):\n")
+    cat("  {marginaleffects} not installed. Install it to enable interpretable SATE summaries.\n")
+    return(invisible(NULL))
+  }
+  
+  # Identify exposure (DAGassist currently treats the “first” exposure as primary in printing)
+  exp_nm <- get_by_role(report$roles, "exposure")
+  if (is.na(exp_nm) || !nzchar(exp_nm)) {
+    cat("\nEffect summaries (response scale):\n")
+    cat("  Could not identify the exposure variable for marginal effects.\n")
+    return(invisible(NULL))
+  }
+  
+  # Filter to (ATE) models to reduce clutter (Denly’s pipeline focuses on weighted estimands)
+  mods_use <- mods_full
+  if (isTRUE(only_weighted) && length(names(mods_use))) {
+    keep <- grepl("\\(SATE\\)$", names(mods_use))
+    mods_use <- mods_use[keep]
+  }
+  
+  if (!length(mods_use)) return(invisible(NULL))
+  
+  rows_all <- list()
+  
+  for (nm in names(mods_use)) {
+    m <- mods_use[[nm]]
+    if (inherits(m, "DAGassist_fit_error")) next
+    
+    # Try to get the analytic sample’s exposure vector (best alignment with estimation)
+    mf <- tryCatch(stats::model.frame(m), error = function(e) NULL)
+    
+    # weights for marginaleffects averaging (only if the model actually has weights)
+    wts_use <- tryCatch(stats::weights(m), error = function(e) NULL)
+    if (is.null(wts_use) || !length(wts_use)) {
+      wts_use <- NULL
+    } else {
+      wts_use <- as.numeric(wts_use)
+      # drop unusable or trivial weights
+      if (all(!is.finite(wts_use)) || all(wts_use == 1)) wts_use <- NULL
+      # if we have a model.frame, enforce alignment
+      if (!is.null(mf) && length(wts_use) != nrow(mf)) wts_use <- NULL
+    }
+    
+    exp_vec <- NULL
+    if (!is.null(mf) && exp_nm %in% names(mf)) {
+      exp_vec <- mf[[exp_nm]]
+    } else if (!is.null(report$.__data) && exp_nm %in% names(report$.__data)) {
+      exp_vec <- report$.__data[[exp_nm]]
+    }
+    
+    if (is.null(exp_vec)) next
+    
+    # Heuristic: treat low-unique numeric treatments as categorical (cutpoints)
+    exp_kind <- "continuous"
+    if (is.factor(exp_vec) || is.character(exp_vec)) {
+      exp_kind <- "categorical"
+    } else if (is.numeric(exp_vec)) {
+      u <- sort(unique(exp_vec[!is.na(exp_vec)]))
+      if (length(u) <= 10) exp_kind <- "categorical"
+    }
+    
+    # Use the model’s own vcov (fixest/glm/etc.) so SEs match the fitted model
+    V <- tryCatch(stats::vcov(m), error = function(e) NULL)
+    
+    if (identical(exp_kind, "categorical")) {
+      # Adjacent-level comparisons (0->1, 1->2, ...) to preserve cutpoint interpretability
+      if (is.factor(exp_vec)) {
+        # keep declared level order, but drop unused levels in the analytic sample
+        present <- unique(as.character(exp_vec[!is.na(exp_vec)]))
+        lv <- levels(exp_vec)
+        lv <- lv[lv %in% present]
+      } else {
+        # numeric-coded categories or character: enforce a deterministic order
+        lv <- sort(unique(exp_vec[!is.na(exp_vec)]))
+      }
+      
+      if (length(lv) < 2) next
+      
+      if (length(lv) < 2) next
+      
+      for (i in seq_len(length(lv) - 1)) {
+        a <- lv[i]
+        b <- lv[i + 1]
+        
+        a_use <- if (is.factor(exp_vec)) as.character(a) else a
+        b_use <- if (is.factor(exp_vec)) as.character(b) else b
+        
+        vars <- setNames(list(c(a_use, b_use)), exp_nm)
+        
+        ac <- tryCatch(
+          marginaleffects::avg_comparisons(
+            m,
+            variables = vars,
+            type = "response",
+            vcov = V
+          ),
+          error = function(e) NULL
+        )
+        if (is.null(ac) || !nrow(ac)) next
+        
+        # Keep a compact row
+        rows_all[[length(rows_all) + 1L]] <- data.frame(
+          model = nm,
+          estimand = "SATE (response)",
+          contrast = paste0(exp_nm, ": ", a, " -> ", b),
+          estimate = ac$estimate[1],
+          std.error = ac$std.error[1],
+          conf.low = if ("conf.low" %in% names(ac)) ac$conf.low[1] else NA_real_,
+          conf.high = if ("conf.high" %in% names(ac)) ac$conf.high[1] else NA_real_,
+          p.value = if ("p.value" %in% names(ac)) ac$p.value[1] else NA_real_,
+          stringsAsFactors = FALSE
+        )
+      }
+    } else {
+      # Continuous: avg slope on response scale, then scale by IQR
+      sl <- tryCatch(
+        marginaleffects::avg_slopes(
+          m,
+          variables = exp_nm,
+          type = "response",
+          vcov = V
+        ),
+        error = function(e) NULL
+      )
+      if (is.null(sl) || !nrow(sl)) next
+      
+      iqr <- NA_real_
+      if (identical(continuous_scale, "IQR")) {
+        qs <- tryCatch(stats::quantile(exp_vec, probs = c(.25, .75), na.rm = TRUE, type = 7), error = function(e) NULL)
+        if (!is.null(qs) && length(qs) == 2) iqr <- unname(qs[2] - qs[1])
+      }
+      if (!is.finite(iqr) || iqr == 0) next
+      
+      rows_all[[length(rows_all) + 1L]] <- data.frame(
+        model = nm,
+        estimand = "SATE (response)",
+        contrast = paste0(exp_nm, ": +IQR (", format(iqr, digits = 4), ")"),
+        estimate = sl$estimate[1] * iqr,
+        std.error = sl$std.error[1] * iqr,
+        conf.low = if ("conf.low" %in% names(sl)) sl$conf.low[1] * iqr else NA_real_,
+        conf.high = if ("conf.high" %in% names(sl)) sl$conf.high[1] * iqr else NA_real_,
+        p.value = if ("p.value" %in% names(sl)) sl$p.value[1] else NA_real_,
+        stringsAsFactors = FALSE
+      )
+    }
+  }
+  
+  if (!length(rows_all)) return(invisible(NULL))
+  
+  out <- do.call(rbind, rows_all)
+  
+  # Apply labels_map to the exposure name inside contrast strings, if present
+  labmap <- report$labels_map
+  if (is.character(labmap) && length(labmap) && exp_nm %in% names(labmap)) {
+    out$contrast <- gsub(exp_nm, unname(labmap[[exp_nm]]), out$contrast, fixed = TRUE)
+  }
+  
+  cat("\nEffect summaries (response scale):\n")
+  print(out, row.names = FALSE)
+  invisible(out)
 }
 
 #### helps find the exposure and outcome names 
@@ -837,6 +1518,51 @@ get_by_role <- function(roles, value) {
     s <- paste0(..., collapse = "")
     if (.allow_ansi()) paste0(prefix, s, suffix) else s
   }
+}
+
+# detect whether the engine is a fixest estimator (feols/feglm/felm/etc.)
+# used for suppressing fixest's per-model notes and re-emitting compact diagnostics
+.dagassist_engine_is_fixest <- function(engine) {
+  if (is.null(engine) || !is.function(engine)) return(FALSE)
+  env <- tryCatch(environment(engine), error = function(e) NULL)
+  if (is.null(env)) return(FALSE)
+  
+  # environmentName() returns e.g. "namespace:fixest"
+  nm <- tryCatch(environmentName(env), error = function(e) "")
+  if (is.character(nm) && grepl("^namespace:fixest$", nm)) return(TRUE)
+  
+  # fallback
+  pkg <- tryCatch(utils::packageName(env), error = function(e) NA_character_)
+  identical(pkg, "fixest")
+}
+
+#' Custom GOF fields for fixest models in modelsummary tables
+#'
+#' This is a method for modelsummary::glance_custom().
+#'
+#' @noRd
+glance_custom.fixest <- function(x, ...) {
+  fml <- tryCatch(stats::formula(x), error = function(e) NULL)
+  if (is.null(fml)) {
+    return(data.frame(fixef = NA_character_, stringsAsFactors = FALSE))
+  }
+  
+  f_txt <- paste(deparse(fml, width.cutoff = 500L), collapse = " ")
+  
+  parts <- strsplit(f_txt, "\\|", fixed = FALSE)[[1]]
+  if (length(parts) < 2) {
+    return(data.frame(fixef = NA_character_, stringsAsFactors = FALSE))
+  }
+  
+  fe_part <- trimws(parts[2])
+  if (!nzchar(fe_part) || identical(fe_part, "0")) {
+    return(data.frame(fixef = NA_character_, stringsAsFactors = FALSE))
+  }
+  
+  fe_part <- gsub("\\s+", " ", fe_part)
+  fe_part <- gsub("\\s*\\+\\s*", ", ", fe_part)
+  
+  data.frame(fixef = fe_part, stringsAsFactors = FALSE)
 }
 
 #the pretty colors

@@ -1,6 +1,6 @@
 Package: DAGassist
 Title: Test Robustness with Directed Acyclic Graphs
-Version: 0.2.7
+Version: 0.2.8
 Authors@R: c(
     person("Graham", "Goff", 
       email = "goffgrahamc@gmail.com", 
@@ -14,8 +14,8 @@ Authors@R: c(
 Maintainer: Graham Goff <goffgrahamc@gmail.com>
 Description: Provides robustness checks to align estimands with the identification 
     that they require. Given a 'dagitty' object and a model specification, 
-    'DAGassist' classifies variables by causal roles, flags problematic controls, 
-    and generates a report comparing the original model with minimal and canonical 
+    'DAGassist' classifies variables by causal roles, recovers a target estimand, 
+    and generates a report comparing the original model with DAG-derived
     adjustment sets. Exports publication-grade reports in 'LaTeX', 'Word', 'Excel',
     'dotwhisker', or plain text/'markdown'. 'DAGassist' is built on 'dagitty', an 
     'R' package that uses the 'DAGitty' web tool (<https://dagitty.net/>) for 
@@ -29,15 +29,16 @@ Depends: R (>= 3.5)
 Imports: broom, cli, crayon, dagitty, magrittr, stats, tools, utils,
         writexl, dplyr, ggplot2, dotwhisker
 Suggests: devtools, fixest, ggdag, knitr, modelsummary, rmarkdown,
-        testthat (>= 3.0.0), tidyverse, DiagrammeR
+        testthat (>= 3.0.0), tidyverse, DiagrammeR, marginaleffects,
+        WeightIt, DirectEffects, lme4
 VignetteBuilder: knitr
 Config/Needs/website: pkgdown, rmarkdown, DiagrammeR, htmltools
 Config/testthat/edition: 3
 Encoding: UTF-8
-RoxygenNote: 7.3.2
+RoxygenNote: 7.3.3
 NeedsCompilation: no
-Packaged: 2025-11-11 15:04:54 UTC; grahamgoff
+Packaged: 2026-02-20 00:13:38 UTC; grahamgoff
 Author: Graham Goff [aut, cre] (ORCID: <https://orcid.org/0000-0002-0717-6995>),
   Michael Denly [aut] (ORCID: <https://orcid.org/0000-0002-7074-5011>)
 Repository: CRAN
-Date/Publication: 2025-11-11 15:50:07 UTC
+Date/Publication: 2026-02-20 08:40:16 UTC

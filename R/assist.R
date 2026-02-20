@@ -1,14 +1,12 @@
-#' Generate a (console/LaTeX/word/excel/txt) report classifying nodes and comparing models
+#' Generate and/or export report that classifies nodes, compares models, and (optionally) target causal estimands.
 #'
 #' `DAGassist()` validates a DAG + model specification, classifies node roles,
 #' builds minimal and canonical adjustment sets, fits comparable models, and
 #' renders a compact report in several formats (console, LaTeX fragment, DOCX,
-#' XLSX, plain text). It also supports passing a **single engine call** (e.g.
-#' `feols(Y ~ X + Z | fe, data = df)`) instead of a plain formula.
+#' XLSX, plain text). It can also target sample-average estimands via weighting
+#' (e.g., SATE/SATT) and recover sample average controlled direct effects via
+#' sequential g-estimation (e.g., SACDE).
 #' 
-#' In addition to tabular export formats, you can create a dot-whisker plot
-#' (via `type = "dwplot"` or `type = "dotwhisker"`) for the model comparison.
-#'
 #' @param dag A **dagitty** object (see [dagitty::dagitty()]).
 #' @param formula Either (a) a standard model formula `Y ~ X + ...`, or
 #'   (b) a single **engine call** such as `feols(Y ~ X + Z | fe, data = df, ...)`.
@@ -25,15 +23,15 @@
 #' @param engine_args Named list of extra arguments forwarded to `engine(...)`.
 #'   If `formula` is an engine call, arguments from the call are merged with
 #'   `engine_args` (call values take precedence).
-#' @param verbose Logical (default `TRUE`). Controls verbosity in the console
+#' @param verbose logical (default `TRUE`). Controls verbosity in the console
 #'   printer (formulas + notes).
-#' @param type Output type. One of
+#' @param type output type. One of
 #'   `"console"` (default), `"latex"`/`"docx"`/`"word"`,
 #'   `"excel"`/`"xlsx"`, `"text"`/`"txt"`,
 #'   or the plotting types `"dwplot"`/`"dotwhisker"`.
 #'   For `type = "latex"`, if no `out=` is supplied, a LaTeX fragment is printed
 #'   to the console instead of being written to disk.
-#' @param out Output file path for the non-console types:
+#' @param out output file path for the non-console types:
 #'   * `type="latex"`: a **LaTeX fragment** written to `out` (usually `.tex`);
 #'     when omitted, the fragment is printed to the console.
 #'   * `type="text"`/`"txt"`: a **plain-text** file written to `out`;
@@ -43,34 +41,55 @@
 #'   * `type="docx"`/`"word"`: a **Word (.docx)** file written to `out`.
 #'   * `type="excel"`/`"xlsx"`: an **Excel (.xlsx)** file written to `out`.
 #'   Ignored for `type="console"`.
-#' @param imply Logical; default `FALSE`. Specifies **evaluation scope.**
-#'   - If `FALSE` (default): restrict DAG evaluation to variables **named in the formula**
-#'     (prune the DAG to exposure, outcome, and RHS terms). Roles/sets/bad-controls are
-#'     computed on this pruned graph, and the roles table **only** shows those variables.
-#'     Essentially, it fits the DAG to the formula. 
-#'   - If `TRUE`: evaluate on the **full DAG** and allow DAG-implied controls in the
-#'     minimal/canonical sets. The roles table shows all DAG nodes, and the printout 
-#'     notes any variables added beyond your RHS. Essentially, it fits the formula to the DAG.
-#' @param labels Optional variable labels (named character vector or data.frame).
-#' @param omit_intercept Logical; drop intercept rows from the model comparison display (default `TRUE`).
-#' @param omit_factors Logical; drop factor-level rows from the model comparison display (default `TRUE`).
-#'    This parameter only suppresses factor **output**--they are still included in the regression. 
-#' @param show Which sections to include in the output. One of `"all"` (default),
-#'    `"roles"` (only the roles grid), or `"models"` (only the model comparison table/plot).
-#'    This makes it possible to generate and export just roles or just comparisons.
-#' @param eval_all Logical; default `FALSE`.  When `TRUE`, keep **all original RHS terms** 
-#'    that are not in the DAG (e.g., fixed effects, interactions, splines, 
-#'    convenience covariates) in the minimal and canonical formulas. 
-#'    When `FALSE` (default), RHS terms not present as DAG nodes are dropped 
-#'    from those derived formulas.
-#' @param bivariate Logical; if `TRUE`, include a bivariate (exposure-only) specification
-#'    in the comparison table **in addition** to the user's original and DAG-derived models.
-#' @param exclude Optional character vector to remove neutral controls from the canonical set.
+#' @param imply logical; default `FALSE`. Controls whether roles/sets are computed on a
+#'   **pruned DAG** or the **full DAG**.
+#'   - If `FALSE` (default): restrict DAG evaluation to exposure, outcome, and terms named
+#'     in the model (prune the DAG to what appears in the specification).
+#'   - If `TRUE`: evaluate on the full DAG and allow DAG-implied controls in the
+#'     minimal/canonical sets; the roles table includes all DAG nodes.
+#' @param labels list; optional variable labels (named character vector or data.frame).
+#' @param omit_intercept logical; drop intercept rows from the model comparison display (default `TRUE`).
+#' @param omit_factors logical; drop factor-level rows from the model comparison display (default `TRUE`).
+#'    This parameter only suppresses factor **output**; factor terms still enter the regression.
+#' @param show character vector or list; specify which sections to include in the output. One of `"all"` (default),
+#'    `"roles"` (roles grid only), or `"models"` (model comparison only.
+#' @param eval_all logical; default `FALSE`. When `TRUE`, retain original RHS terms that are
+#'   not DAG nodes (e.g., fixed effects, interactions, splines) in derived minimal/canonical
+#'   formulas. When `FALSE`, non-DAG RHS terms are dropped from derived formulas.
+#' @param wts_omit character vector; terms to omit from the weighting (treatment) 
+#'   model even when `eval_all = TRUE`. Useful for keeping non-DAG fixed effects 
+#'   in the outcome model while preventing them from entering the propensity/weight model.
+#' @param bivariate logical; if `TRUE`, include a bivariate (exposure-only) specification
+#'    in the comparison table in addition to the user's original and DAG-derived models (default `FALSE`).
+#' @param exclude character vector or list; remove neutral controls from the canonical set.
 #'    Recognized values are `"nct"` (drop *neutral-on-treatment* controls) and
-#'    `"nco"` (drop *neutral-on-outcome* controls). You can supply one or both,
+#'    `"nco"` (drop *neutral-on-outcome* controls). Users can supply one or both,
 #'    e.g. `exclude = c("nco", "nct")`; each requested variant is fitted and shown
 #'    as a separate "Canon. (-...)" column in the console/model exports.
-#'    
+#' @param estimand character vector; causal estimand(s) for reported columns. Any of:
+#'   `"raw"` (default), `"SATE"`, `"SATT"`, `"SACDE"` (alias `"SCDE"`), or `"none"`.
+#'
+#'   - `"raw"`: naive regression fits implied by the supplied engine/formulas.
+#'   - `"SATE"`/`"SATT"`: inverse-probability weighted versions of each comparison model
+#'     (via \pkg{WeightIt}) to target sample ATE/ATT.
+#'   - `"SACDE"`/`"SCDE"`: for DAGs with mediator(s), adds sequential g-estimation columns:
+#'     (i) unweighted sequential-g and (ii) IPW-weighted sequential-g (weights estimated
+#'     without conditioning on mediators) to target the **sample average controlled direct effect**.
+#' @param weights_args list; arguments forwarded to \pkg{WeightIt} when computing IPW weights for
+#'   `"SATE"`/`"SATT"` and for the weighted SACDE refit. If `trim_at` is supplied, weights are
+#'   winsorized at the requested quantile before refitting.
+#' @param auto_acde logical; if `TRUE` (default), automates handling conflicts between specifications
+#'    and estimand arguments. Fails gracefully with a helpful error when users specify ACDE estimand
+#'    for a model without mediators.
+#' @param acde list; options for the controlled direct effect workflow (estimands `"SACDE"`/`"SCDE"`).
+#'   Users can override parts of the sequential g-estimation specification with named elements:
+#'   `m` (mediators), `x` (baseline covariates), `z` (intermediate covariates),
+#'   `fe` (fixed-effects variables), `fe_as_factor` (wrap `fe` as `factor()`), and
+#'   `include_descendants` (treat descendants of mediators as mediators). 
+#' @param directeffects_args Named list of arguments forwarded to [DirectEffects::sequential_g()]
+#'   when `estimand` includes `"SACDE"` (e.g., simulation/bootstrap controls,
+#'   variance estimator options).
+#'   
 #' @details
 #' **Engine-call parsing.** If `formula` is a call (e.g., `feols(Y ~ X | fe, data=df)`),
 #' DAGassist extracts the engine function, formula, data argument, and any additional
@@ -116,71 +135,71 @@
 #' (pretty tables), `{broom}` (fallback tidying), `{rmarkdown}` + **pandoc** (DOCX),
 #' `{writexl}` (XLSX), `{dotwhisker}`/`{ggplot2}` for plotting.
 #'
-#' @return An object of class `"DAGassist_report"`, invisibly for file and plot
-#' outputs, and printed for `type="console"`. The list contains:
-#' \itemize{
-#'   \item `validation` - result from `validate_spec(...)` which verifies acyclicity and X/Y declarations.
-#'   \item `roles` - raw roles data.frame from `classify_nodes(...)` (logic columns).
-#'   \item `roles_display` - roles grid after labeling/renaming for exporters.
-#'   \item `bad_in_user` - variables in the user's RHS that are `MED`/`COL`/`dOut`/`dMed`/`dCol`.
-#'   \item `controls_minimal` - (legacy) one minimal set (character vector).
-#'   \item `controls_minimal_all` - list of all minimal sets (character vectors).
-#'   \item `controls_canonical` - canonical set (character vector; may be empty).
-#'   \item `controls_canonical_excl` - named list of filtered canonical sets
-#'     (e.g. `$nco`, `$nct`) when `exclude` is used.
-#'   \item `formulas` - list with `original`, `minimal`, `minimal_list`, `canonical`,
-#'     and any filtered canonical formulas.
-#'   \item `models` - list with fitted models `original`, `minimal`, `minimal_list`,
-#'     `canonical`, and any filtered canonical models.
-#'   \item `verbose`, `imply` - flags as provided.
-#' }
-#'
-#' @section Interpreting the output:
-#' See the vignette articles for worked examples on generating roles-only, models-only,
-#' and LaTeX/Word/Excel reports.
+#' **Raw vs Weighted SACDE.**
+#' The unweighted sequential-g estimator in \pkg{DirectEffects} uses linear regression in its second stage.
+#' By the Frisch–Waugh–Lovell theorem, this implies an estimand that is weighted by the conditional variance
+#' of the (residualized) exposure given controls—i.e., a regression-weighted average of unit-level effects,
+#' not a sample-average controlled direct effect. DAGassist therefore reports both the raw sequential-g
+#' result and a weighted sequential-g refit (using \pkg{WeightIt} IPW weights estimated without mediators)
+#' to target the *sample average* controlled direct effect.
 #' 
-#' **Model Comparison:**
-#' \itemize{
-#'   \item **Minimal** - the smallest adjustment set that blocks all back-door paths
-#'         (confounders only).
-#'   \item **Canonical** - the largest permissible set: includes all controls that are not
-#'         `MED`, `COL`, `dOut`, `dMed`, or `dCol`. 
-#' }
-#'@section Errors and edge cases:
-#'  * If exposure/outcome cannot be inferred uniquely, the function stops with a clear message.
-#'  * Fitting errors (e.g., FE collinearity) are captured and displayed in comparisons
-#'   without aborting the whole pipeline.
+#' @return A `DAGassist_report` object (a named list) returned invisibly for file/plot
+#'   outputs and printed for `type = "console"`.
 #'
-#'@seealso [print.DAGassist_report()] for the console printer, and the helper
-#'  exporters in `report_*` modules.
+#'   The object contains:
+#'   \describe{
+#'     \item{validation}{List. Output of `validate_spec()`: DAG validity + exposure/outcome checks.}
+#'     \item{roles}{`data.frame`. Raw node-role flags from `classify_nodes()`.}
+#'     \item{roles_display}{`data.frame`. Roles table formatted for printing/export.}
+#'     \item{labels_map}{Named character vector. Variable → display label map used in tables/plots.}
+#'     \item{controls_minimal}{Character vector. (Legacy) One minimal adjustment set.}
+#'     \item{controls_minimal_all}{List of character vectors. All minimal adjustment sets.}
+#'     \item{controls_canonical}{Character vector. Canonical adjustment set (possibly empty).}
+#'     \item{controls_canonical_excl}{Named list. Filtered canonical sets created by `exclude`.}
+#'     \item{conditions}{List. Parsed conditional statements from the DAG (if any).}
+#'     \item{formulas}{List. User formula plus DAG-derived formula variants (minimal/canonical/etc.).}
+#'     \item{models}{List. Fitted models for each formula variant (including minimal-list fits).}
+#'     \item{bad_in_user}{Character vector. RHS terms classified as mediator/collider/etc.}
+#'     \item{unevaluated}{Character vector. Terms carried through but not evaluated by the engine.}
+#'     \item{unevaluated_str}{Character scalar. Pretty-printed version of `unevaluated`.}
+#'     \item{settings}{List. Print/export settings, including `coef_omit` and `show`.}
+#'     \item{.__data}{`data.frame` or `NULL`. The data used to fit models (stored for downstream helpers).}
+#'   }
+#'   For file outputs (`type = "latex"`, `"docx"`, `"xlsx"`, `"txt"`, `"dotwhisker"`),
+#'   the returned object includes attribute `file`, the normalized output path.
 #'
-#' @examplesIf requireNamespace("dagitty", quietly = TRUE)
+#' @seealso [print.DAGassist_report()] and `vignette("DAGassist", package = "DAGassist")`.
+#'
+#' @examples
 #' \dontshow{set.seed(1)}
-#' \dontshow{
-#' # Build the DAG directly with dagitty
-#' g <- dagitty::dagitty("dag { Z -> X; X -> M; X -> Y; M -> Y; Z -> Y; A -> Y; B -> Y; X -> C; Y -> C }")
-#' dagitty::exposures(g) <- "X"; dagitty::outcomes(g) <- "Y"
+#' if (requireNamespace("dagitty", quietly = TRUE)) {
+#'   g <- dagitty::dagitty("dag { Z -> X; X -> M; X -> Y; M -> Y; Z -> Y }")
+#'   dagitty::exposures(g) <- "X"; dagitty::outcomes(g) <- "Y"
+#'   n <- 300
+#'   Z <- rnorm(n); X <- 0.8*Z + rnorm(n)
+#'   M <- 0.9*X + rnorm(n)
+#'   Y <- 0.7*X + 0.6*M + 0.3*Z + rnorm(n)
+#'   df <- data.frame(Z, X, M, Y)
 #'
-#' n <- 150
-#' A <- rnorm(n); B <- rnorm(n); Z <- rnorm(n)
-#' X <- 0.8*Z + rnorm(n)
-#' M <- 0.9*X + rnorm(n)
-#' Y <- 0.7*X + 0.6*M + 0.3*Z + 0.2*A - 0.1*B + rnorm(n)
-#' C <- 0.5*X + 0.4*Y + rnorm(n)
-#' df <- data.frame(A,B,Z,X,M,Y,C)
+#'   # 1) Core: DAG-derived specs + engine-call parsing
+#'   r <- DAGassist(g, lm(Y ~ X + Z + M, data = df))
+#'
+#'   # 2) Target sample-average estimands via weighting (requires WeightIt)
+#'   if (requireNamespace("WeightIt", quietly = TRUE)) {
+#'     r2 <- DAGassist(g, lm(Y ~ X + Z + M, data = df), estimand = "SATE")
+#'   }
+#'
+#'   # 3) Mediator case: sequential g-estimation (requires DirectEffects)
+#'   if (requireNamespace("DirectEffects", quietly = TRUE)) {
+#'     r3 <- DAGassist(g, lm(Y ~ X + Z + M, data = df), estimand = "SACDE")
+#'   }
+#'
+#'   # 4) File export (LaTeX fragment)
+#'   \donttest{
+#'     out <- file.path(tempdir(), "dagassist_report.tex")
+#'     DAGassist(g, lm(Y ~ X + Z + M, data = df), type = "latex", out = out)
+#'   }
 #' }
-#' # generate a console DAGassist report
-#' DAGassist(dag = g, 
-#'           formula = lm(Y ~ X + Z + C + M, data = df))
-#'
-#' # generate a LaTeX DAGassist report in console
-#' DAGassist(dag = g, 
-#'           formula = lm(Y ~ X + Z + C + M, data = df),
-#'           type = "latex")
-#' 
-#' # generate just the roles table in the console
-#' DAGassist(dag = g, 
-#'           show = "roles")
 #' @export
 
 DAGassist <- function(dag, 
@@ -202,7 +221,13 @@ DAGassist <- function(dag,
                       omit_intercept = TRUE,
                       omit_factors = TRUE,
                       bivariate = FALSE,
-                      engine_args = list()) {
+                      estimand = c("raw", "none", "SATE", "SATT", "SACDE", "SCDE"),
+                      engine_args = list(),
+                      weights_args = list(),
+                      wts_omit = NULL,
+                      auto_acde = TRUE,
+                      acde = list(),
+                      directeffects_args = list()) {
   # set output type
   type <- match.arg(type)
   # set show type
@@ -212,6 +237,22 @@ DAGassist <- function(dag,
   if (show == "models" && (missing(formula) || is.null(formula))) {
     stop("show='models' requires a model specification (formula or engine call).", call. = FALSE)
   }
+  
+  #ensure default to raw when no estimand arg is passed
+  #and llow multiple estimands (e.g., c("ATE","ACDE"))
+  .allowed_estimands <- c("raw", "none", "SATE", "SATT", "SACDE", "SCDE")
+  # if estimand=NULL, default to raw. do not default to multi-estimand
+  if (missing(estimand) || is.null(estimand) || length(estimand) == 0L) {
+    estimand <- "raw"
+  } else {
+    estimand <- match.arg(estimand, choices = .allowed_estimands, several.ok = TRUE)
+  }
+  
+  estimand_requested <- estimand
+  estimand <- .dagassist_normalize_estimand(estimand)
+  
+  acde <- .dagassist_normalize_acde_spec(acde)
+  
   
   ###### FAST-PATH FOR ROLES ONLY OUTPUT TO NOT REQUIRE FORMULA OR DATA ########
   roles_only_no_formula <- identical(show, "roles") && (missing(formula) || is.null(formula))
@@ -248,28 +289,29 @@ DAGassist <- function(dag,
       controls_canonical_excl = character(0),
       conditions = conditions,  
       formulas = list(
-        original     = NULL,
-        minimal      = NULL,
+        original = NULL,
+        minimal = NULL,
         minimal_list = list(),
-        canonical    = NULL,
+        canonical = NULL,
         canonical_excl = NULL
       ),
       models = list(
-        original     = NULL,
-        minimal      = NULL,
+        original = NULL,
+        minimal = NULL,
         minimal_list = list(),
-        canonical    = NULL,
+        canonical = NULL,
         canonical_excl = NULL
       ),
-      unevaluated     = character(0),
+      unevaluated = character(0),
       unevaluated_str = "",
       verbose = isTRUE(verbose),
       imply   = isTRUE(imply)
     )
     report$settings <- list(
       omit_intercept = isTRUE(omit_intercept),
-      omit_factors   = isTRUE(omit_factors),
-      show           = show
+      omit_factors = isTRUE(omit_factors),
+      eval_all = isTRUE(eval_all),
+      show = show
     )
     report$.__data <- if (!is.null(data)) data else NULL
     report$settings$coef_omit <- .build_coef_omit(
@@ -280,7 +322,7 @@ DAGassist <- function(dag,
     class(report) <- c("DAGassist_report", class(report))
     
     # build objects for exporters
-    mods_full      <- .build_named_mods(report)
+    mods_full <- .build_named_mods(report)
     models_df_full <- .build_models_df(report)
     
     # export to file or return to console
@@ -389,6 +431,10 @@ DAGassist <- function(dag,
     # User passed a plain formula; keep engine and data as provided
     # nothing to do here
   }
+  #if the engine is fixest and call did not specify notes param, suppress notes 
+  if (.dagassist_engine_is_fixest(engine) && is.null(engine_args$notes)) {
+    engine_args$notes <- FALSE
+  }
   ## infer exposure/outcome from DAG if user didn't set them
   xy <- .infer_xy(dag, exposure, outcome)
   exposure <- xy$exposure
@@ -407,6 +453,15 @@ DAGassist <- function(dag,
   
   # classify nodes on the evaluation DAG (PRUNED when imply = FALSE)
   roles <- classify_nodes(dag_eval, exposure, outcome)
+  
+  # auto-map ATE -> ACDE if the user specification conditions on mediator(s)
+  estimand <- .dagassist_apply_auto_acde(
+    estimand = estimand,
+    formula = formula,
+    roles = roles,
+    auto_acde = auto_acde,
+    include_descendants = isTRUE(acde$include_descendants)
+  )
   
   #normalize labels and prepare roles table
   labmap <- tryCatch(.normalize_labels(labels, vars = unique(roles$variable)),
@@ -611,6 +666,7 @@ DAGassist <- function(dag,
     validation = v, 
     roles = roles,
     roles_display = roles_display,
+    dag = dag_eval,
     labels_map = labmap,
     bad_in_user = bad_in_user,
     
@@ -646,8 +702,18 @@ DAGassist <- function(dag,
   report$settings <- list(
     omit_intercept = isTRUE(omit_intercept),
     omit_factors = isTRUE(omit_factors),
+    eval_all = isTRUE(eval_all),
+    wts_omit = wts_omit,
     show = show,
-    exclude=exclude
+    exclude = exclude,
+    engine = engine,
+    engine_args = engine_args,
+    estimand = estimand,
+    estimand_requested = estimand_requested,
+    weights_args = weights_args,
+    auto_acde = isTRUE(auto_acde),
+    acde = acde,
+    directeffects_args = directeffects_args
   )
   report$.__data <- data
   report$settings$coef_omit <- .build_coef_omit(
@@ -657,9 +723,22 @@ DAGassist <- function(dag,
   )
   
   class(report) <- c("DAGassist_report", class(report))
-  # Build unified artifacts once for all outputs
-  mods_full <- .build_named_mods(report)
-  models_df_full <- .build_models_df(report)
+  
+  #for console output, do not build exporter objects, as they are computationally 
+  #expensive and the console printer will build models later
+  mods_full <- NULL
+  models_df_full <- NULL
+  
+  need_export_objects <- !identical(type, "console")
+  
+  if (isTRUE(need_export_objects)) {
+    mods_full <- .build_named_mods(report)
+    models_df_full <- .build_models_df(report)
+    
+    # cache to prevent refitting if the object is printed later.
+    report$models_full <- mods_full
+    report$models_df_full <- models_df_full
+  }
   
   ##### LATEX OUT BRANCH #####
   if (type == "latex") {
@@ -830,7 +909,7 @@ print.DAGassist_report <- function(x, ...) {
     if (!identical(x$settings$show, "all") && !identical(x$settings$show, "models")) {
       if (isTRUE(verbose)) {
         cat(
-          "\nRoles legend: Exp. = exposure; Out. = outcome; CON = confounder; MED = mediator; COL = collider; dOut = descendant of outcome; dMed  = descendant of mediator; dCol = descendant of collider; dConfOn = descendant of a confounder on a back-door path; dConfOff = descendant of a confounder off a back-door path; NCT = neutral control on treatment; NCO = neutral control on outcome\n",
+          "\nRoles legend: Exp. = exposure/treatment; Out. = outcome; CON = confounder; MED = mediator; COL = collider; dOut = descendant of outcome; dMed  = descendant of mediator; dCol = descendant of collider; dConfOn = descendant of a confounder on a back-door path; dConfOff = descendant of a confounder off a back-door path; NCT = neutral control on treatment; NCO = neutral control on outcome\n",
           sep = ""
         )
       } else {
@@ -853,8 +932,8 @@ print.DAGassist_report <- function(x, ...) {
         cat("Minimal controls 1: {}\n")
       }
       cat("Canonical controls: ", .format_set(x$controls_canonical), "\n", sep = "")
-      
-      if (length(x$unevaluated)) {
+      #fixed to suppress when eval_all = TRUE
+      if (!isTRUE(x$settings$eval_all) && length(x$unevaluated)) {
         cat("\nNote: The following regressors, which are included in the below ",
             "models, were not evaluated by DAGassist because they are not nodes in the DAG:\n  {",
             x$unevaluated_str, "}\n", sep = "")
@@ -989,7 +1068,28 @@ print.DAGassist_report <- function(x, ...) {
     }
     
     coef_omit <- x$settings$coef_omit
-    .print_model_comparison_list(mods, coef_rename = x$labels_map, coef_omit = coef_omit)
+    
+    #build estimand models ONCE. If DAGassist() already cached models_full
+    # (e.g., non-console types), reuse to avoid refitting.
+    mods_full <- x$models_full
+    if (is.null(mods_full) || !is.list(mods_full) || !length(mods_full)) {
+      mods_full <- .dagassist_add_estimand_models(x, mods)
+    }
+    
+    #print ACDE diagnostics once, rather than per-model which clutters output
+    if (isTRUE(verbose)) {
+      .dagassist_print_acde_console_info(mods_full)
+    }
+    
+    .print_model_comparison_list(
+      mods_full,
+      coef_rename = x$labels_map,
+      coef_omit = coef_omit
+    )
+    #interpretable effects report for weighted estimands
+    .dagassist_print_effect_summaries(x, mods_full, only_weighted = TRUE, continuous_scale = "IQR")
+    #print weight diagnostics
+    if (isTRUE(verbose)) .dagassist_print_weight_diagnostics(mods_full)
     
     if (identical(show, "all")) {
       if (isTRUE(verbose)) {
