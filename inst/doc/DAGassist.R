@@ -1,26 +1,5 @@
-## ----dev-load, include=FALSE--------------------------------------------------
-# Prefer source build when available (works in RStudio, pkgdown, or local render)
-if (requireNamespace("devtools", quietly = TRUE) && file.exists(file.path("..","DESCRIPTION"))) {
-  # Don't error on CRAN/build machines that don't have devtools or the source path
-  try(devtools::load_all("..", quiet = TRUE), silent = TRUE)
-}
-
-# If we've already loaded from source, avoid re-attaching a different installed build later
-from_source <- try({
-  "DAGassist" %in% loadedNamespaces() &&
-    grepl(normalizePath(".."), getNamespaceInfo(asNamespace("DAGassist"), "path"), fixed = TRUE)
-}, silent = TRUE)
-from_source <- isTRUE(from_source)
-
-# Feature gates (computed *after* attempting load_all)
-has_show <- tryCatch({
-  "show" %in% names(formals(DAGassist::DAGassist))
-}, error = function(e) FALSE)
-
-# Robust check: dev build defines a private .report_dotwhisker helper
-has_dotwhisker <- tryCatch({
-  exists(".report_dotwhisker", envir = asNamespace("DAGassist"), inherits = FALSE)
-}, error = function(e) FALSE)
+## ----load---------------------------------------------------------------------
+library(DAGassist)
 
 ## ----make-df, include=FALSE---------------------------------------------------
 
@@ -588,7 +567,7 @@ knitr::kable(tabs$categorical, align = "l")
 ## ----example-dag, echo=FALSE, message=FALSE, fig.width=8, fig.height=5, warning=FALSE, fig.cap="*Example: The Causal Effects of Family Background and Life Course Events on Fertility Patterns*"----
 library(dagitty)
 library(ggdag)
-library(tidyverse)
+library(ggplot2)
 
 x_pos <- c(
   children = 10,
@@ -695,7 +674,7 @@ DAGassist(dag_model,
           formula = lm(children ~ edu_year + age + class + gender + 
                          immigrant + urban + birth_control + income + 
                          married + job_stability_t + contract + pref, data = dat),
-          estimand = "SATE")
+          estimand = "total")
 
 ## ----cde-est, warning=FALSE, fig.width=8, fig.height=5, fig.cap="*Visualizing all estimands*"----
 library(DirectEffects)
@@ -704,6 +683,73 @@ DAGassist(dag_model,
           formula = lm(children ~ edu_year + age + class + gender + 
                          immigrant + urban + birth_control + income + 
                          married + job_stability_t + contract + pref, data = dat),
-          estimand = c("SATE", "SACDE"),
+          estimand = c("total", "direct"),
           type = "dotwhisker")
+
+## ----latex_report, eval=FALSE-------------------------------------------------
+# DAGassist(dag_model,
+#           formula = lm(children ~ edu_year + age + class + gender +
+#                          immigrant + urban + birth_control + income +
+#                          married + job_stability_t + contract + pref, data = dat),
+#           type = "latex",
+#           out = "out/path/filename.tex")
+
+## ----word-excel_report, eval = FALSE------------------------------------------
+# #word example
+# DAGassist(dag_model,
+#           formula = lm(children ~ edu_year + age + class + gender +
+#                          immigrant + urban + birth_control + income +
+#                          married + job_stability_t + contract + pref, data = dat),
+#           type = "word", #or, type = "docx"
+#           out = "out/path/filename.docx")
+# 
+# #excel example
+# DAGassist(dag_model,
+#           formula = lm(children ~ edu_year + age + class + gender +
+#                          immigrant + urban + birth_control + income +
+#                          married + job_stability_t + contract + pref, data = dat),
+#           type = "excel", #or, type = "xlsx"
+#           out = "out/path/filename.xlsx")
+
+## ----pdag-eval----------------------------------------------------------------
+DAGassist::pdag_robustness(dag_model,
+                           formula = children ~ edu_year + age + class + gender + 
+                             immigrant + urban + birth_control + income + married + 
+                             job_stability_t + contract + pref,
+                           uncertain_edges = c("urban -- income", 
+                                               "income -- immigrant", 
+                                               "income -- married",
+                                               "income -- edu_year"))
+
+## ----pdag-main-eval-----------------------------------------------------------
+DAGassist(dag_model, 
+          formula = children ~ edu_year + age + class + gender + immigrant + urban +
+            birth_control + income + married + job_stability_t + contract + pref, data = dat,
+           uncertain_edges = c("urban -- income", 
+                               "income -- immigrant", 
+                               "income -- married", 
+                               "income -- edu_year"))
+
+## ----pdag-eval-bad------------------------------------------------------------
+DAGassist::pdag_robustness(dag_model,
+                           formula = children ~ edu_year + age + class + gender + 
+                             immigrant + urban + birth_control + income + married + 
+                             job_stability_t + contract + pref,
+                           uncertain_edges = c("urban -- income", 
+                                               "income -- immigrant", 
+                                               "income -- married", 
+                                               "income -- edu_year",
+                                               "job_stability_t -- income"))
+
+## ----add-edges-eval-----------------------------------------------------------
+DAGassist::add_edges_robustness(dag_model,
+  formula = children ~ edu_year + age + class + gender + immigrant + urban +
+    birth_control + income + married + job_stability_t + contract + pref,
+  add_edges = c("pref -> edu_year", "religion -> edu_year", "edu_year <-> children"))
+
+## ----add-edges-main-eval------------------------------------------------------
+DAGassist(dag_model,
+  formula = children ~ edu_year + age + class + gender + immigrant + urban +
+    birth_control + income + married + job_stability_t + contract + pref, data = dat,
+  add_edges = c("pref -> edu_year", "edu_year <-> children"))
 

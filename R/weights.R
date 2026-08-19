@@ -68,10 +68,10 @@
 
 .dagassist_formula_for_model_name <- function(x, model_name) {
   #parse model name for estimand type
-  is_weighted <- grepl("\\((SATE|SATT)\\)\\s*$", model_name, ignore.case = TRUE)
-  is_acde <- grepl("\\((SACDE|SCDE)\\)\\s*$", model_name, ignore.case = TRUE)
+  is_weighted <- grepl("\\((total)\\)\\s*$", model_name, ignore.case = TRUE)
+  is_acde <- grepl("\\((direct)\\)\\s*$", model_name, ignore.case = TRUE)
   #strip away the estimand notation to get the baseline model name
-  base_name <- sub("\\s*\\((SATE|SATT|SACDE|SCDE)\\)\\s*$", "", model_name, ignore.case = TRUE)
+  base_name <- sub("\\s*\\((total|direct)\\)\\s*$", "", model_name, ignore.case = TRUE)
   
   # If ACDE model label, build sequential_g formula from the *base* model formula
   if (is_acde) {
@@ -164,24 +164,29 @@
 .dagassist_normalize_estimand <- function(estimand) {
   if (is.null(estimand)) return("RAW")
   est <- toupper(as.character(estimand))
+  bad <- setdiff(est, c("RAW", "NONE", "TOTAL", "DIRECT"))
+  if (length(bad)) {
+    stop("Unknown estimand(s): ", paste(bad, collapse = ", "),
+         ". Valid values are: raw, none, total, direct.", call. = FALSE)
+  }
   est <- match.arg(est,
-                   choices = c("RAW","NONE","SATE","SATT","SACDE","SCDE"),
+                   choices = c("RAW","NONE","TOTAL","DIRECT"),
                    several.ok = TRUE)
   est[est == "NONE"] <- "RAW"
-  est[est == "SCDE"]  <- "SACDE"
+  est[est == "DIRECT"] <- "DIRECT"
   unique(est)
 }
 
 # ---- Normalize ACDE spec list ----
 .dagassist_normalize_acde_spec <- function(acde) {
   if (is.null(acde)) acde <- list()
-  if (!is.list(acde)) stop("`sacde` must be a list.", call. = FALSE)
+  if (!is.list(acde)) stop("`direct` must be a list.", call. = FALSE)
   defaults <- list(
-    m = NULL,                 # mediators (character)
-    x = NULL,                 # baseline covariates override (character)
-    z = NULL,                 # intermediate covariates override (character)
-    fe = NULL,                # fixed-effects vars override (character)
-    fe_as_factor = TRUE,      # wrap FE vars as factor()
+    m = NULL, # mediators (character)
+    x = NULL, # baseline covariates override (character)
+    z = NULL, # intermediate covariates override (character)
+    fe = NULL, # fixed-effects vars override (character)
+    fe_as_factor = TRUE, # wrap FE vars as factor()
     include_descendants = FALSE  # treat Dmediator as mediators
   )
   # base R merge
@@ -208,7 +213,7 @@
   ests <- unique(.dagassist_normalize_estimand(estimand))
   
   # ACDE/CDE requires at least one mediator in the DAG / formula
-  wants_acde <- any(ests %in% c("SACDE", "SCDE"))
+  wants_acde <- any(ests %in% c("DIRECT"))
   if (isTRUE(wants_acde)) {
     has_med <- FALSE
     if (!is.null(roles)) {
@@ -222,12 +227,12 @@
     if (!isTRUE(has_med)) {
       stop(
         paste0(
-          "You requested estimand = 'SACDE' (alias: 'SCDE'), but no mediator node(s) were detected in your DAG ",
+          "You requested estimand = 'direct' but no mediator node(s) were detected in your DAG ",
           "for this exposure/outcome pair.\n",
-          "SACDE/SCDE is only defined when at least one mediator exists.\n\n",
+          "The direct effect is only defined when at least one mediator exists.\n\n",
           "Fix options:\n",
-          "  1) Use estimand = 'SATE'/'SATT' for total effects (when no mediators are present), OR\n",
-          "  2) Use estimand = 'RAW' to report the naive regression output.\n"
+          "  1) Use estimand = 'total' for total effects (when no mediators are present), OR\n",
+          "  2) Use estimand = 'raw' to report the naive regression output.\n"
         ),
         call. = FALSE
       )
@@ -236,7 +241,7 @@
   # allow ATE/ATT if formula includes mediators; will omit automatically
   if (!isTRUE(auto_acde)) return(estimand)
   
-  wants_total <- any(ests %in% c("SATE", "SATT"))
+  wants_total <- any(ests %in% c("TOTAL"))
   if (!isTRUE(wants_total)) return(estimand)
   
   controls_mediator <- .dagassist_formula_controls_mediator(
@@ -300,10 +305,11 @@
   if (!length(ests) || identical(ests, "RAW")) return(mods)
   
   out <- mods
-  if ("SATE" %in% ests) out <- .dagassist_add_weighted_models(x, out, estimand = "SATE")
-  if ("SATT" %in% ests) out <- .dagassist_add_weighted_models(x, out, estimand = "SATT")
+  if ("TOTAL" %in% ests) out <- .dagassist_add_weighted_models(x, out, estimand = "total")
+  if ("DIRECT" %in% ests) out <- .dagassist_add_sacde_models(x, out)
   
-  if ("SACDE" %in% ests) out <- .dagassist_add_sacde_models(x, out)
+  #overwrite with total/direct terminology at print time
+  names(out) <- .dagassist_display_names(names(out))
   
   out
 }
@@ -319,7 +325,7 @@
   )
   
   # Weighting only applies to total-effect estimands
-  ests <- intersect(ests, c("SATE", "SATT"))
+  ests <- intersect(ests, c("TOTAL"))
   if (!length(ests)) return(mods)
   est <- ests[1L]
   
@@ -493,9 +499,7 @@
     } else {
       f_treat <- stats::as.formula(paste(exp_nm, "~ 1"))
     }
-    
-    # Build complete-case analytic data for THIS spec.
-    # Use variables needed for treatment + outcome model evaluation.
+  
     # Build complete-case analytic data for THIS spec.
     # Keep vars needed for treatment + outcome + clustering.
     # fixed to include fixest tail vars so refits with FE don't fail.
@@ -572,14 +576,13 @@
       )
     }
     
-    #changed internal and display terminology from ATE->SATE; cannot pass
-    #directly to weigtit, which does not recognize an SATE estimand parameter
+    #changed internal and display terminology from ATE->total; cannot pass
+    #directly to weigtit, which does not recognize an total estimand parameter
     #will probably need to change this bandaid later when I add EV and ATE is a valid 
     #parameter. 
     est_wt <- switch(
       toupper(est),
-      SATE = "ATE",
-      SATT = "ATT",
+      TOTAL = "ATE",
       toupper(est)
     )
     
@@ -649,11 +652,9 @@
       engine_args$cluster <- .subset_cluster_vec(engine_args$cluster, data_cc)
     }
     
-    # Fit weighted version of THIS model on THIS model’s CC data
+    #fit weighted version of this model on this model’s CC data
     engine_args_w <- utils::modifyList(engine_args, list(weights = w))
     
-    # Fit weighted version of THIS model on THIS model’s CC data
-    engine_args_w <- utils::modifyList(engine_args, list(weights = w))
     #specifically suppress binomial warning, which won't be caught in the prior
     #warning suppression. it may be classed as a message or something.
     fit_w <- withCallingHandlers(
@@ -742,11 +743,11 @@
     if (!is.null(fit_w)) weighted_mods[[nm]] <- fit_w
   }
   
-  # Splice weighted columns in directly after their base column
-  est_label <- paste0(" (", est, ")")
-  mods_out <- list()
+  #new order:
+  #Original | Total Minimal 1 (Raw) | Total Canonical (Raw) | Total Minimal 1 (Weighted) | Total Canonical (Weighted) | Direct (Raw) | Direct (Weighted)
+  est_label <- paste0(" ", .dagassist_model_name_labels(est))
+  mods_out <- mods
   for (nm in names(mods)) {
-    mods_out[[nm]] <- mods[[nm]]
     if (!is.null(weighted_mods[[nm]])) {
       mods_out[[paste0(nm, est_label)]] <- weighted_mods[[nm]]
     }
@@ -760,70 +761,12 @@
   est <- toupper(as.character(estimand))
   switch(
     est,
-    SATE      = "(SATE)",
-    SATT      = "(SATT)",
-    SACDE     = "(SACDE)",
-    SEQG_RAW  = "(seqg raw)",
-    RAW       = "",
-    NONE      = "",
+    TOTAL = "(total)",
+    DIRECT = "(direct)",
+    SEQG_RAW = "(seqg raw)",
+    RAW = "",
+    NONE = "",
     ""
-  )
-}
-
-# ---- Guardrail: ACDE mediator types ----
-# DirectEffects::sequential_g() is fragile when mediators are not numeric columns.
-# This guard identifies non-numeric mediators and returns an actionable message.
-.dagassist_acde_guard_mediators <- function(data, m_terms) {
-  if (is.null(m_terms) || !length(m_terms)) return(NULL)
-  
-  m_terms <- unique(as.character(m_terms))
-  m_terms <- intersect(m_terms, names(data))
-  if (!length(m_terms)) return(NULL)
-  
-  classes <- vapply(m_terms, function(nm) paste(class(data[[nm]]), collapse = "/"), character(1))
-  is_bad  <- vapply(m_terms, function(nm) {
-    v <- data[[nm]]
-    is.factor(v) || is.character(v) || is.logical(v)
-  }, logical(1))
-  
-  bad <- m_terms[is_bad]
-  if (!length(bad)) return(NULL)
-  
-  # levels (only meaningful for factor/character)
-  lvl_txt <- vapply(bad, function(nm) {
-    v <- data[[nm]]
-    if (is.character(v)) v <- factor(v)
-    if (is.factor(v)) {
-      lv <- levels(v)
-      paste0("levels=", length(lv), if (length(lv) && length(lv) <= 8) paste0(" (", paste(lv, collapse = ", "), ")") else "")
-    } else if (is.logical(v)) {
-      "logical"
-    } else {
-      ""
-    }
-  }, character(1))
-  
-  bullets <- paste0(
-    "  - ", bad, "  [class: ", classes[match(bad, m_terms)], 
-    ifelse(nzchar(lvl_txt), paste0("; ", lvl_txt), ""),
-    "]"
-  )
-  
-  paste0(
-    "SACDE fit aborted before calling DirectEffects::sequential_g().\n\n",
-    "Reason:\n",
-    "  At least one mediator is non-numeric (factor/character/logical).\n",
-    "  DirectEffects::sequential_g() can throw `subscript out of bounds` in this case, ",
-    "  because categorical mediators expand to multiple model-matrix columns which do not ",
-    "  match the mediator term labels.\n\n",
-    "Problematic mediator(s):\n",
-    paste(bullets, collapse = "\n"), "\n\n",
-    "How to fix:\n",
-    "  1) Recode mediator(s) to numeric before calling DAGassist (e.g., binary 0/1).\n",
-    "  2) One-hot encode multi-category mediators into numeric dummy columns, then pass\n",
-    "     those dummy names explicitly via `acde = list(m = c(\"M1\",\"M2\", ...))`. \n",
-    "     Either ensure your DAG nodes match those column names, or use imply = FALSE to prevent mismatch issues. \n",
-    "  3) Exclude the categorical mediator(s) from SACDE by explicitly setting `sacde$m`.\n"
   )
 }
 
